@@ -34,6 +34,8 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 VERSION = "0.1.0-prototype"
+# transcript.py sits beside this file. Python started with -I does not look there by itself.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 SCHEMA_VERSION = 3  # the KDL export schema this writes
 
 # The row fields KDL hashes, in the form its app and make_documentation.py use (Model.kt, Chain).

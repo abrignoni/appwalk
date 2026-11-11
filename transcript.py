@@ -203,8 +203,8 @@ def write(export, profile_folder=None):
         w.writerows(rows)
     e = html.escape
     out = ["<!doctype html><meta charset='utf-8'><title>Transcript</title><style>",
-           "body{font:15px system-ui,sans-serif;margin:24px;color:#111}table{border-collapse:collapse;width:100%}",
-           "td{vertical-align:top;padding:4px 8px;border-top:1px solid #ddd}img{width:220px;border:1px solid #999}",
+           "body{font:15px system-ui,sans-serif;margin:24px;color:#111}table{border-collapse:collapse;width:100%;max-width:820px}",
+           "td{vertical-align:top;padding:4px 8px;border-top:1px solid #ddd}td.pic{width:240px;border-top:2px solid #888}img{width:220px;border:1px solid #999}",
            ".right{text-align:right}.across{text-align:center;color:#555}.other,.time{color:#666;font-size:13px}",
            ".meta{color:#666;font-size:12px}h2{margin-top:32px}.note{background:#fff3cd;padding:8px;margin:6px 0}</style>",
            f"<h1>Transcript: {e(manifest['apps_under_test'][0]['package'])}</h1>",
@@ -212,21 +212,30 @@ def write(export, profile_folder=None):
            "seen on. The screenshots are the record of what was on the screen; this text is what the app reported. "
            "Left and right are where a line sat on the screen. A direction is given only where the note below says how.</p>"]
     out += [f"<p class='note'>{e(n)}</p>" for n in notes]
-    item, shown = object(), None
+    # Lines first seen on the same screenshot sit beside it: the picture cell spans those rows.
+    groups = []
     for r in rows:
-        if r["item"] != item:
+        if groups and groups[-1][0]["item"] == r["item"] and groups[-1][0]["screenshot"] == r["screenshot"]:
+            groups[-1].append(r)
+        else:
+            groups.append([r])
+    item = object()
+    for g in groups:
+        if g[0]["item"] != item:
             if item is not object:
                 out.append("</table>")
-            item, shown = r["item"], None
+            item = g[0]["item"]
             out.append(f"<h2>{e(item or 'Screen walked')}</h2><table>")
-        pic = ""
-        if r["screenshot"] != shown:
-            shown = r["screenshot"]
-            pic = f"<a href='screens/{e(shown)}'><img src='screens/{e(shown)}' loading='lazy'></a><div class='meta'>step {r['first_seen_step']}</div>"
-        label = " · ".join(x for x in (r["direction"], r["direction_basis"]) if x)
-        out.append(f"<tr><td style='width:240px'>{pic}</td><td class='{e(r['side'])} {e(r['role'])}'>{e(r['text'])}"
-                   f"<div class='meta'>{e(label)}{' · ' if label and r['app_description'] else ''}{e(r['app_description'])}"
-                   f"{' · NOT JOINED to the frame before' if r['joined_to_previous_frame'] == 'NO' else ''}</div></td></tr>")
+        for i, r in enumerate(g):
+            pic = ""
+            if i == 0:
+                shot = r["screenshot"]
+                pic = (f"<td class='pic' rowspan='{len(g)}'><a href='screens/{e(shot)}'><img src='screens/{e(shot)}' loading='lazy'></a>"
+                       f"<div class='meta'>step {r['first_seen_step']}</div></td>")
+            label = " · ".join(x for x in (r["direction"], r["direction_basis"]) if x)
+            out.append(f"<tr>{pic}<td class='{e(r['side'])} {e(r['role'])}'>{e(r['text'])}"
+                       f"<div class='meta'>{e(label)}{' · ' if label and r['app_description'] else ''}{e(r['app_description'])}"
+                       f"{' · NOT JOINED to the frame before' if r['joined_to_previous_frame'] == 'NO' else ''}</div></td></tr>")
     out.append("</table>")
     with open(os.path.join(export, "transcript.html"), "w", encoding="utf-8") as f:
         f.write("\n".join(out))
