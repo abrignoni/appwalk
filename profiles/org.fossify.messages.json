@@ -1,0 +1,10 @@
+{
+  "package": "org.fossify.messages",
+  "checked_with": "1.10.2 on an Android 15 emulator, 11 November 2026",
+  "message_ids": ["thread_message_body"],
+  "time_ids": ["thread_date_time"],
+  "direction_rules": [
+    {"by": "side", "value": "right", "direction": "sent"},
+    {"by": "side", "value": "left", "direction": "received"}
+  ]
+}

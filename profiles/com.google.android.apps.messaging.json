@@ -1,0 +1,13 @@
+{
+  "package": "com.google.android.apps.messaging",
+  "checked_with": "messages.android_20240528_00_RC01 on an Android 15 emulator, 11 November 2026",
+  "message_ids": ["message_text"],
+  "time_ids": ["message_status", "tombstone_timestamp"],
+  "ignore_text_prefixes": ["Texting with "],
+  "direction_rules": [
+    {"by": "description_prefix", "value": "You said", "direction": "sent"},
+    {"by": "description_contains", "value": " said ", "direction": "received"},
+    {"by": "side", "value": "right", "direction": "sent"},
+    {"by": "side", "value": "left", "direction": "received"}
+  ]
+}

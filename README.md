@@ -81,11 +81,41 @@ A folder in the known-data logger (KDL) export format, `kdl_<scenario>_<device>_
 - `text_index.csv`: the text of every labelled item in every tree, for searching.
 - `actions.csv` and `manifest.json`.
 
+- `transcript.html` and `transcript.csv`: the text of each walked screen in reading order, each line
+  once, beside the screenshot it was first seen on. See "Transcript" below.
+
 KDL's `tools/make_documentation.py` reads the export and checks the chain. `appwalk.py verify` also
 checks every image and tree against the hash in its row, and reports files that have no row.
 
 The text of password fields is removed from a view tree before it is saved or hashed. A code the
 examiner types at the workstation is never written anywhere.
+
+## Transcript
+
+So nobody has to type what the pictures show, each export gets a transcript made from the view trees:
+
+- The text lines inside the scrolling list of each screen, top to bottom.
+- Frames joined into one sequence by the lines two consecutive screenshots share, so a line that was
+  on three overlapping screenshots appears once. A frame that shares nothing with the one before is
+  marked `NOT JOINED`.
+- For each line: the screenshot it was first seen on, where it sat (left, right, across) and the
+  app's own description of it, when the app gives one.
+
+It does not say who sent a message unless there is a profile for the app in `profiles/`. A profile
+names the view ids of message text and time lines and how a sent message is marked. With one, each
+message gets `sent` or `received` and the basis: "the app's own description" or "side of the screen
+(inferred)". Profiles exist for Google Messages and Fossify Messages; each says which version it was
+checked with. An app can change its ids or layout at any time, so check a profile's output against
+the pictures.
+
+The transcript is a reading aid, made from the saved files, and can be made again with
+`python3 appwalk.py transcript <export folder>`. It is not in the hash chain. The screenshots are the
+record of what was on the screen; the transcript is what the app reported.
+
+Checked on the emulator exports against ALEAPP: for Google Messages, all 16 threads (227 messages)
+came out in exactly ALEAPP's order with the same direction for every message, in one session from the
+side of the screen and in another from the app's description. For Fossify Messages, direction matched
+for all 226 messages it shows.
 
 ## What it does not do
 

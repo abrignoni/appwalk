@@ -356,6 +356,75 @@ class ListWalkTests(unittest.TestCase):
         self.assertEqual(res["items_walked"], 1)
 
 
+class TranscriptTests(unittest.TestCase):
+    def lines(self, out, item=""):
+        import csv
+        with open(os.path.join(out, "transcript.csv"), encoding="utf-8", newline="") as f:
+            return [r for r in csv.DictReader(f) if r["item"] == item]
+
+    def test_each_line_appears_once_in_reading_order_whichever_way_the_walk_went(self):
+        for reveal in ("above", "below"):
+            for start in ("bottom", "middle"):
+                out = run(FakePhone(start=start), reveal=reveal)[0]
+                got = [r["text"] for r in self.lines(out)]
+                self.assertEqual(got, [f"item {i:03d}" for i in range(1, 41)], (reveal, start))
+                self.assertTrue(all(r["joined_to_previous_frame"] in ("", "yes") for r in self.lines(out)))
+
+    def test_every_line_names_a_screenshot_that_exists_and_showed_it(self):
+        out = run(FakePhone())[0]
+        for r in self.lines(out):
+            tree = os.path.join(out, "trees", r["screenshot"].replace(".png", ".xml"))
+            self.assertTrue(os.path.exists(os.path.join(out, "screens", r["screenshot"])))
+            self.assertIn(('text="%s"' % r["text"]).encode(), read(tree))
+
+    def test_a_jump_past_content_is_flagged_in_the_transcript(self):
+        import transcript
+        a = [{"text": f"m{i}", "rid": "x", "desc": "", "bounds": (0, i, 9, i + 1), "side": "left"} for i in range(5, 9)]
+        b = [{"text": f"m{i}", "rid": "x", "desc": "", "bounds": (0, i, 9, i + 1), "side": "left"} for i in range(0, 3)]
+        merged, shared = transcript.join(list(a), b, "above")
+        self.assertEqual(shared, 0)
+        self.assertEqual([x["text"] for x in merged], ["m0", "m1", "m2", "m5", "m6", "m7", "m8"])
+
+    def test_repeated_identical_messages_keep_their_count(self):
+        import transcript
+        mk = lambda texts: [{"text": t, "rid": "x", "desc": "", "bounds": (0, i, 9, i + 1), "side": "left"} for i, t in enumerate(texts)]
+        merged, shared = transcript.join(mk(["ok", "ok", "bye"]), mk(["hi", "ok", "ok", "ok"]), "above")
+        # Frames overlap on two "ok"; the earlier frame adds one more above them.
+        self.assertEqual([x["text"] for x in merged], ["hi", "ok", "ok", "ok", "bye"])
+        self.assertEqual(shared, 2)
+
+    def test_side_is_where_the_line_sat_and_a_long_bubble_still_leans(self):
+        import transcript
+        cb = (0, 0, 1000, 2000)
+        self.assertEqual(transcript.side_of((30, 0, 700, 50), cb), "left")
+        self.assertEqual(transcript.side_of((400, 0, 980, 50), cb), "right")
+        self.assertEqual(transcript.side_of((70, 0, 900, 50), cb), "left")     # long bubble, received
+        self.assertEqual(transcript.side_of((300, 0, 700, 50), cb), "across")  # a centred date line
+        self.assertEqual(transcript.side_of((10, 0, 990, 50), cb), "across")
+
+    def test_without_a_profile_no_direction_is_claimed(self):
+        out = run(FakePhone(count=12))[0]
+        self.assertTrue(all(r["role"] == "text" and r["direction"] == "" for r in self.lines(out)))
+
+    def test_a_profile_gives_direction_and_says_on_what_basis(self):
+        import transcript
+        prof = {"message_ids": ["message_text"], "time_ids": ["when"], "direction_rules": [
+            {"by": "description_prefix", "value": "You said", "direction": "sent"},
+            {"by": "side", "value": "right", "direction": "sent"}, {"by": "side", "value": "left", "direction": "received"}]}
+        line = lambda **k: dict({"text": "t", "rid": "a:id/message_text", "desc": "", "side": "left"}, **k)
+        self.assertEqual(transcript.classify(line(desc="You said t"), prof), ("message", "sent", "the app's own description"))
+        self.assertEqual(transcript.classify(line(side="right"), prof), ("message", "sent", "side of the screen (inferred)"))
+        self.assertEqual(transcript.classify(line(), prof), ("message", "received", "side of the screen (inferred)"))
+        self.assertEqual(transcript.classify(line(rid="a:id/when"), prof)[0], "time")
+        self.assertEqual(transcript.classify(line(rid="a:id/title"), prof)[0], "other")
+
+    def test_list_mode_gives_one_section_per_opened_row(self):
+        out = run_list(FakeChat(CHATS), select="ask", answer="2-3")[0]
+        self.assertEqual([r["text"] for r in self.lines(out, "Bruno")], [f"Bruno msg {i:03d}" for i in range(1, 5)])
+        self.assertEqual([r["text"] for r in self.lines(out, "Carla")], [f"Carla msg {i:03d}" for i in range(1, 56)])
+        self.assertTrue(os.path.exists(os.path.join(out, "transcript.html")))
+
+
 class ExportTests(unittest.TestCase):
     def test_export_verifies_and_each_kind_of_tampering_is_caught(self):
         out, log, s = run(FakePhone(count=12))

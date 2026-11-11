@@ -767,6 +767,14 @@ def write_export(log, device, package, app_version, summary, args_used):
     }
     with open(os.path.join(out, "manifest.json"), "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2, ensure_ascii=False)
+    # The transcript is made from the files above and can be made again at any time, so it is not in
+    # the chain: the screenshots and view trees are the record, the transcript is a reading aid.
+    try:
+        import transcript
+        _, notes = transcript.write(out)
+        manifest["transcript_notes"] = notes
+    except Exception as e:  # a reading aid must never cost the export
+        manifest["transcript_notes"] = [f"transcript not written: {type(e).__name__}: {e}"]
     return manifest
 
 
@@ -845,6 +853,8 @@ def main(argv=None):
     wl.add_argument("--item-reveal", choices=["above", "below"], default="above", help="direction to walk each opened item (default: above)")
     v = sub.add_parser("verify", help="check an export against itself")
     v.add_argument("export")
+    tr = sub.add_parser("transcript", help="write transcript.csv and transcript.html again for an export")
+    tr.add_argument("export")
     a = ap.parse_args(argv)
 
     if a.cmd == "verify":
@@ -852,6 +862,14 @@ def main(argv=None):
         for name, result, ok in res:
             print(("ok      " if ok else "WARNING ") + f"{name}: {result}")
         return 0 if all(ok for _, _, ok in res) else 1
+
+    if a.cmd == "transcript":
+        import transcript
+        rows, notes = transcript.write(a.export)
+        print(f"{len(rows)} lines written to transcript.csv and transcript.html")
+        for n in notes:
+            print("note:", n)
+        return 0
 
     dev = AdbDevice(a.serial)
     stamp = dev.stamp()
@@ -898,6 +916,8 @@ def main(argv=None):
     print(f"\nExport: {out}")
     print("\n".join(lines))
     print(f"Latest row hash (note it somewhere else): {manifest['hash_chain']['last_row_hash']}")
+    for n in manifest.get("transcript_notes", []):
+        print("Transcript:", n)
     if not ok:
         print("WARNING: this run is not complete or not confirmed. Read the stop reasons and the log.")
     return 0 if ok else 2
