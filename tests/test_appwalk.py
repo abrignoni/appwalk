@@ -185,6 +185,14 @@ class WalkTests(unittest.TestCase):
         self.assertEqual(t.secret_fields, 1)
         self.assertNotIn(b"9041", t.xml)
 
+    def test_only_a_password_field_is_emptied_not_text_that_mentions_passwords_or_codes(self):
+        raw = FakePhone(password=True).tree_raw().replace(
+            b'text="item 040"', b'text="my password is tulip-9 and the PIN code is 4821"')
+        t = appwalk.Tree(raw)
+        self.assertNotIn(b"9041", t.xml)                                   # what was typed in the password field
+        self.assertIn(b"my password is tulip-9 and the PIN code is 4821", t.xml)  # an ordinary message
+        self.assertIn(b":id/pin", t.xml)                                   # the field itself is still listed
+
     def test_black_frame_is_recorded_as_blank(self):
         out, log, s = run(FakePhone(count=5, scrollable=False, colour=(0, 0, 0)))
         if appwalk.is_blank(png((0, 0, 0))) is None:
@@ -226,8 +234,10 @@ class FakeChat(FakePhone):
             b = f'bounds="[0,{max(0, top) + 200}][1080,{min(self.view_h, top + h) + 200}]"'
             common = f'package="{self.front}" content-desc="" password="false" scrollable="false" checked="false" selected="false"'
             if self.screen is None:
-                kids.append(f'<node class="android.view.ViewGroup" resource-id="{PKG}:id/row" text="" {common} {b}>'
-                            f'<node class="android.widget.TextView" resource-id="{PKG}:id/name" text="{titles[i]}" {common} {b} />'
+                # A row cut off at the top of the list has lost its name line, as a real list does.
+                name = (f'<node class="android.widget.TextView" resource-id="{PKG}:id/name" text="{titles[i]}" {common} {b} />'
+                        if top > -60 else "")
+                kids.append(f'<node class="android.view.ViewGroup" resource-id="{PKG}:id/row" text="" {common} {b}>{name}'
                             f'<node class="android.widget.TextView" resource-id="{PKG}:id/snippet" text="{titles[i]} msg {self.conversations[titles[i]]:03d}" {common} {b} />'
                             f'</node>')
             else:

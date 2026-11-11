@@ -223,7 +223,15 @@ def tree_rows(tree, package):
         tm = BOUNDS.match(texts[0].get("bounds") or "")
         tl, tt, tr, tb = map(int, tm.groups()) if tm else (l, t, r, b)
         out.append({"title": texts[0].get("text"), "texts": [n.get("text") for n in texts], "bounds": [l, t, r, b],
+                    "title_id": texts[0].get("resource-id") or "",
                     "fully_visible": t >= ct and b <= cb and (b - t) >= 40, "tap": ((tl + tr) // 2, (tt + tb) // 2)})
+    # A row cut off by the edge of the list loses its first lines, and its next line (a preview of the
+    # last message, say) would be taken for its title. Seen with Fossify Messages. So a row counts only
+    # when its first text carries the same view id as most rows' first text.
+    ids = [r["title_id"] for r in out if r["title_id"]]
+    usual = max(set(ids), key=ids.count) if len(ids) >= 2 else None
+    for r in out:
+        r["whole"] = usual is None or r["title_id"] == usual
     return out
 
 
@@ -551,6 +559,8 @@ class ListWalk:
             self.signature = list_signature(box)
         seen_here = set()
         for row in tree.rows(self.w.package):
+            if not row["whole"]:
+                continue
             if row["title"] in seen_here:
                 self.duplicates.add(row["title"])
             seen_here.add(row["title"])
@@ -611,7 +621,7 @@ class ListWalk:
                 if w.blocked(tree):
                     continue
                 return None
-            row = next((r for r in tree.rows(w.package) if r["title"] == title and r["fully_visible"]), None)
+            row = next((r for r in tree.rows(w.package) if r["title"] == title and r["fully_visible"] and r["whole"]), None)
             if row is not None:
                 x, y = row["tap"]
                 w.d.tap(x, y)
@@ -879,6 +889,11 @@ def main(argv=None):
             lines.append("Rows sharing a title (only the first of each was opened): " + ", ".join(summary["duplicate_titles"]))
         if summary["stop_reason"]:
             lines.append("Stopped: " + summary["stop_reason"])
+    blank = sum(1 for s in log.shots if s["status"] == "blank")
+    if blank:
+        ok = False
+        lines.append(f"{blank} of {len(log.shots)} screenshots are black: the app blocks screenshots there. "
+                     "Any text for those screens is in the view trees only.")
     manifest = write_export(log, dev, a.package, walker.app_version, summary, params)
     print(f"\nExport: {out}")
     print("\n".join(lines))

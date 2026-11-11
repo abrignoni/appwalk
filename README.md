@@ -122,8 +122,29 @@ file of the export named any other conversation.
 Between two sessions the same app version gave message bubbles a different view id. The walker does
 not use ids, so it was not affected.
 
-Not tried: a real phone, any other app, any other Android version, a thread with media, rows that
-share a title, right-to-left layouts, a horizontal list.
+Other apps on the same emulator, each checked with `devtools/check_texts.py`, which looks for the
+expected texts in the view trees without using view ids:
+
+| App | What it stands for | Screenshots | Texts captured |
+|---|---|---|---|
+| Google Messages 20240528 | native app | 86, none black | 227 of 227 |
+| Fossify Messages 1.10.2 | another native app, same SMS store | 106, none black | 226 of 227 |
+| Silence 0.16.12 | app that blocks screenshots | 13, all black | 30 of 30, from the view trees only |
+| System HTML Viewer with a made-up chat page | content drawn in a web view | 28, none black | 80 of 80 |
+
+- The one text missing in Fossify Messages is not on its screen either: the app shows the messages
+  before and after it and not that one, while ALEAPP reports it from the SMS store. Why the app
+  leaves it out is not established. The pictures show what the app shows, which is not always what
+  the store holds.
+- Fossify Messages exposed a bug, now fixed and tested: a row cut off by the edge of the list lost
+  its title line, and its preview line was taken for a seventeenth conversation.
+- In the web view every tree listed the whole page, on screen or not. There a tree does not show
+  that a text was in that step's picture, and the gap check has nothing to work with.
+- When screenshots come back black the command says so and exits with 2.
+
+Not tried: a real phone, WhatsApp, Signal, Telegram or any app that needs an account, a Flutter or
+game-engine app, any other Android version, a thread with media, rows that share a title,
+right-to-left layouts, a horizontal list.
 
 Unit tests use a made-up phone and need no device:
 
