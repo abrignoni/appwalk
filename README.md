@@ -1,6 +1,7 @@
-# appwalk (prototype)
+# AppWalk (prototype)
 
-`appwalk` is a working name. This is a prototype, tried on one Android 15 emulator and nothing else.
+AppWalk is a prototype, tried on one Android 15 emulator and nothing else. The name is written AppWalk;
+the repository, the command and the module are `appwalk`.
 
 It documents an Android app's content with screenshots, from a workstation, over adb, on a phone the
 examiner is allowed to examine. There are two ways to use it:

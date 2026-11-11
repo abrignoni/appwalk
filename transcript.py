@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Builds a reading-order transcript from an appwalk export: the text of each walked screen, in order,
+"""Builds a reading-order transcript from an AppWalk export: the text of each walked screen, in order,
 each line beside the screenshot it was first seen on.
 
 What it does for any app, with no knowledge of the app:
@@ -202,12 +202,12 @@ def write(export, profile_folder=None):
         w.writeheader()
         w.writerows(rows)
     e = html.escape
-    out = ["<!doctype html><meta charset='utf-8'><title>Transcript</title><style>",
+    out = ["<!doctype html><meta charset='utf-8'><title>AppWalk transcript</title><style>",
            "body{font:15px system-ui,sans-serif;margin:24px;color:#111}table{border-collapse:collapse;width:100%;max-width:820px}",
            "td{vertical-align:top;padding:4px 8px;border-top:1px solid #ddd}td.pic{width:240px;border-top:2px solid #888}img{width:220px;border:1px solid #999}",
            ".right{text-align:right}.across{text-align:center;color:#555}.other,.time{color:#666;font-size:13px}",
            ".meta{color:#666;font-size:12px}h2{margin-top:32px}.note{background:#fff3cd;padding:8px;margin:6px 0}</style>",
-           f"<h1>Transcript: {e(manifest['apps_under_test'][0]['package'])}</h1>",
+           f"<h1>AppWalk transcript: {e(manifest['apps_under_test'][0]['package'])}</h1>",
            "<p>Text from the view trees the app reported, in reading order, beside the screenshot each line was first "
            "seen on. The screenshots are the record of what was on the screen; this text is what the app reported. "
            "Left and right are where a line sat on the screen. A direction is given only where the note below says how.</p>"]

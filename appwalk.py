@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""appwalk: document an Android app's content with screenshots, over adb.
+"""AppWalk: document an Android app's content with screenshots, over adb.
 
 walk: the examiner opens the screen to document (a message thread, a list). The tool then repeats:
 read the view tree, take a screenshot, read the view tree again, scroll. It stops when the screen
@@ -377,7 +377,7 @@ class Walker:
         s = self.summary = self.new_summary()
         do_rewind = self.rewind if rewind is None else rewind
         self.add("system_event", "walk_start", {
-            "tool": f"appwalk {VERSION}", "package": self.package, "app_version": self.app_version, "item": item,
+            "tool": f"AppWalk {VERSION}", "package": self.package, "app_version": self.app_version, "item": item,
             "capture": capture, "reveal": self.reveal, "scroll_fraction": self.fraction, "swipe_ms": self.swipe_ms,
             "max_screens": self.max_screens, "stable_stops": self.stable_stops, "on_blocked": self.on_blocked,
             "rewind": do_rewind})
@@ -745,7 +745,7 @@ def write_export(log, device, package, app_version, summary, args_used):
     prof = dict(device.profile(), id="p1", utc_ms=log.rows[0]["utc_ms"], boot_count=log.rows[0]["boot_count"])
     manifest = {
         "format": "known-data-logger", "schema_version": SCHEMA_VERSION,
-        "written_by": "appwalk, a workstation tool; not the KDL app",
+        "written_by": "AppWalk, a workstation tool; not the KDL app",
         "logger": {"package": "appwalk (workstation, over adb)", "version_name": VERSION,
                    "first_install_ms": None, "last_update_ms": None},
         "scenario_id": log.scenario_id, "device_label": log.device_label, "profiles": [prof],
