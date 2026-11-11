@@ -1,0 +1,139 @@
+# appwalk (prototype)
+
+`appwalk` is a working name. This is a prototype, tried on one Android 15 emulator and nothing else.
+
+It documents an Android app's content with screenshots, from a workstation, over adb, on a phone the
+examiner is allowed to examine. There are two ways to use it:
+
+- `walk`: the examiner opens one screen (a message thread, a list). The tool scrolls it from one end
+  to the other, saving a screenshot and the screen's view tree at each step.
+- `walk-list`: the examiner opens a list (the conversation list, for example) and chooses rows. The
+  tool opens each chosen row, walks what it opens the same way, and goes back for the next.
+
+Both write a log of everything the tool did.
+
+It is for a device examined with the owner's consent or other lawful authority. It does not unlock
+anything, guess anything or get around any lock. When a lock screen, a password prompt or another
+app is in front, it stops. With `--on-blocked ask` it waits for the examiner, who can deal with it
+on the phone or type the code at the workstation for the tool to enter.
+
+## What it uses on the phone
+
+USB debugging, and three programs that are already on the phone: `uiautomator` (view tree),
+`screencap` (screenshot) and `input` (swipes). It installs no app. Screenshots and view trees are
+sent straight to the workstation. On the test emulator, `uiautomator dump /dev/tty` left no file on
+the phone's storage.
+
+## Use
+
+```bash
+python3 appwalk.py walk --serial <adb serial> --package <app package> --out <folder> --scenario <name> --device-label <label>
+```
+
+```bash
+python3 appwalk.py walk-list --serial <adb serial> --package <app package> --out <folder> --scenario <name> --device-label <label>
+```
+
+```bash
+python3 appwalk.py verify <export folder>
+```
+
+Choosing rows with `walk-list`:
+
+- With nothing else, it reads the list, prints the row titles with numbers and asks which ones
+  (`1,3-5` or `all`).
+- `--select all` takes every row. `--match TEXT` (repeatable) takes the rows whose title contains the text.
+- `--skip-list-capture` reads the list's rows without keeping screenshots or view trees of the list
+  itself. A picture of the list shows a line of every conversation, chosen or not. With this option
+  only the chosen rows' titles and their opened content are in the export.
+
+How `walk-list` opens a row: it finds the row going forward through the list, taps its title, checks
+that another screen came up, walks it, then presses Back until the list is in front again. A row that
+does not open is reported and the rest go on. If Back leaves the app, the run stops.
+
+Needs Python 3 and adb. Pillow is optional: with it, a black frame is recorded as `blank`.
+
+What a walk does:
+
+1. Scrolls to the far end of the list without taking screenshots, because an app can reopen a list
+   wherever it was left. `--no-rewind` skips this.
+2. At each step: reads the view tree, takes a screenshot, reads the view tree again. The screenshot
+   is kept as settled only when the tree was the same before and after it.
+3. Scrolls a part of the list height (`--fraction`, default 0.30), so consecutive frames overlap.
+   If a frame shares nothing with the one before, it logs a gap, goes back and comes forward in
+   smaller moves.
+4. Stops when two scrolls in a row change nothing, at `--max-screens`, or when blocked.
+5. Before calling an end confirmed, it scrolls a little the other way. "Nothing moved" can also
+   mean the swipe was not taken, and that looked the same as the end of the list in the first run.
+   If the screen does not move either way, the stop reason says the end is not confirmed and the
+   command exits with 2.
+
+## What it writes
+
+A folder in the known-data logger (KDL) export format, `kdl_<scenario>_<device>_<UTC time>`:
+
+- `actions.jsonl`: one row per thing the tool did (start, each scroll, each screenshot, each stop
+  or pause), with the phone's clock, time zone, time since boot and boot count, and a SHA-256 chain
+  over the rows, the same chain KDL uses.
+- `screens/` and `trees/`: the screenshots and the view trees, named after their row.
+- Each screenshot row's `detail` holds the SHA-256 of its image and of its view tree. `detail` is
+  inside the chain, so the newest row hash covers every image. Write that hash down somewhere else.
+- `text_index.csv`: the text of every labelled item in every tree, for searching.
+- `actions.csv` and `manifest.json`.
+
+KDL's `tools/make_documentation.py` reads the export and checks the chain. `appwalk.py verify` also
+checks every image and tree against the hash in its row, and reports files that have no row.
+
+The text of password fields is removed from a view tree before it is saved or hashed. A code the
+examiner types at the workstation is never written anywhere.
+
+## What it does not do
+
+- It opens rows only from the list the examiner put in front, and only the rows chosen. It does not
+  look for content on its own in other parts of the app.
+- Rows are told apart by their title. If two rows share a title, only the first is opened and the
+  log says so.
+- Opening a thread marks it read, as it does for a person. On the emulator the conversations that
+  were not chosen stayed unread.
+- It cannot capture a window the app marks as secure. That frame comes back black and is recorded
+  as `blank`. On the emulator, the view tree of one such window (the Settings confirm-PIN screen)
+  was still readable.
+- It does not know what a list holds on a server. Offline it documents what is on the phone.
+- It does not leave the phone unchanged. An opened thread is marked read, and USB debugging stores
+  the workstation's key on the phone.
+- Relative labels on screen ("Now", "5 minutes") are captured as shown. The row's clock fields say
+  when.
+- No iOS.
+
+## Tested
+
+Android 15 emulator (`sdk_gphone64_arm64`, API 35), Google Messages `20240528_00_RC01`, 11 November
+2026, made-up texts. One thread of 66 texts (60 incoming, 6 outgoing): 17 screenshots, both ends
+confirmed, no gaps. Every one of the 66 messages ALEAPP's GoogleMessages artifact reported for that
+thread from an extraction of the same emulator was found as a message bubble in at least one view
+tree, and no bubble was found that ALEAPP did not report.
+
+`walk-list`, same emulator, 16 conversations and 227 texts: with every row chosen, 16 rows were
+found, opened and walked (86 screenshots, about 17 minutes), and all 227 messages ALEAPP reported
+were found under the row of the same name. With two rows chosen by title, those two became read and
+the other 13 unread conversations stayed unread. With `--skip-list-capture` and one row chosen, no
+file of the export named any other conversation.
+
+Between two sessions the same app version gave message bubbles a different view id. The walker does
+not use ids, so it was not affected.
+
+Not tried: a real phone, any other app, any other Android version, a thread with media, rows that
+share a title, right-to-left layouts, a horizontal list.
+
+Unit tests use a made-up phone and need no device:
+
+```bash
+python3 -m unittest discover -s tests
+```
+
+`devtools/` holds the emulator-only scripts used for the test: seeding texts, taking extractions,
+and the comparison with ALEAPP.
+
+## License
+
+Not chosen yet.
