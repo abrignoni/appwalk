@@ -133,10 +133,11 @@ The headline is green when everything was captured and each list was confirmed f
 orange when there is something to look at, and the lines below say what: a row that would not open, a
 run that was stopped, screenshots that came back black, a list whose end was not confirmed.
 
-- **Open report** opens `report.pdf`: the case details, then the text of each conversation, then the
-  screenshots six to a page. Each line of text ends in an S-number, such as S12; click it to go to
-  that screenshot. A picture that came back the same twice (as at the end of a short conversation) is
-  printed once, with both S-numbers.
+- **Open report** opens `report.pdf`: the case details, then each conversation in reading order, with
+  every screenshot beside the lines first seen on it, so a photo is on the same page as the line that
+  names it. Each line ends in an S-number, such as S12, the screenshot beside it. Screenshots that
+  added no new line, such as the checks at the ends of a conversation, follow its text. A picture
+  that came back the same twice is printed once, with both S-numbers.
 - **Open transcript** opens a page with the text of each conversation in reading order, each line
   beside the screenshot it was first seen on.
 - **Open folder** opens the folder with everything in it.

@@ -137,9 +137,10 @@ A folder in the known-data logger (KDL) export format, `kdl_<scenario>_<device>_
 - `text_index.csv`: the text of every labelled item in every tree, for searching.
 - `actions.csv` and `manifest.json`.
 
-- `report.pdf`, with `report.pdf.sha256` beside it: the case details, each conversation's text with
-  every line linked to its screenshot (S-numbers), the screenshots six to a page, and the result of
-  the export check. Needs ReportLab. Like the transcript, it is made from the saved files and is not
+- `report.pdf`, with `report.pdf.sha256` beside it: the case details, each conversation in reading
+  order with every screenshot beside the lines first seen on it (S-numbers), the screenshots that
+  added no line after the text, and the result of the export check. On the emulator's 16
+  conversations: 32 pages for 66 screenshots, 43 of them distinct. Needs ReportLab. Like the transcript, it is made from the saved files and is not
   in the hash chain.
 - `transcript.html` and `transcript.csv`: the text of each walked screen in reading order, each line
   once, beside the screenshot it was first seen on. See "Transcript" below.
