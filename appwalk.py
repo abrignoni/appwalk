@@ -310,6 +310,7 @@ class Walker:
         self.rewind, self.max_rewind_scrolls = rewind, max_rewind_scrolls
         self.app_version = device.app_version(package)
         self.should_stop = lambda: False   # the window's Stop button; checked between steps
+        self.pause_gate = lambda: 0        # the window's Pause button: blocks while paused, returns seconds waited
         self.step = 0      # screenshots taken in this export, across every walk
         self.item = None   # what is being walked, when the tool opened it from a list
         self.walks = []    # one summary per walk
@@ -386,6 +387,9 @@ class Walker:
             return self.finish()
         prev_fp, prev_labels, unchanged, fraction = None, None, 0, self.fraction
         while True:
+            waited = self.pause_gate()
+            if waited:
+                self.add("system_event", "paused_by_examiner", {"seconds": round(waited, 1)})
             if self.should_stop():
                 s["stop_reason"] = "stopped by the examiner; the end was not reached"
                 break
@@ -853,6 +857,27 @@ def list_devices(adb="adb"):
     return out
 
 
+def device_facts(serial, adb="adb"):
+    """What the examiner should see before a run and what the log keeps before and after it: model,
+    Android version, battery, airplane mode, Wi-Fi, and how far the phone's clock is from this computer's.
+    Each value is as the phone reports it; None when it did not answer."""
+    script = ("getprop ro.product.manufacturer; getprop ro.product.model; getprop ro.build.version.release; "
+              "settings get global airplane_mode_on; settings get global wifi_on; settings get system screen_off_timeout; "
+              "dumpsys battery | grep -m1 level; date +%s%N")
+    before = time.time()
+    p = subprocess.run([adb, "-s", serial, "shell", script], capture_output=True, stdin=subprocess.DEVNULL, timeout=30)
+    after = time.time()
+    lines = [x.strip() for x in p.stdout.decode("utf-8", "replace").splitlines()]
+    lines += [""] * (8 - len(lines))
+    num = lambda v: int(v) if v.lstrip("-").isdigit() else None
+    level = re.search(r"(\d+)", lines[6])
+    phone_ms = num(lines[7][:13]) if len(lines[7]) >= 13 else None
+    return {"manufacturer": lines[0] or None, "model": lines[1] or None, "android": lines[2] or None,
+            "airplane_mode_on": num(lines[3]), "wifi_on": num(lines[4]), "screen_off_timeout_ms": num(lines[5]),
+            "battery_percent": int(level.group(1)) if level else None,
+            "phone_clock_minus_computer_s": None if phone_ms is None else round(phone_ms / 1000 - (before + after) / 2, 1)}
+
+
 def app_in_front(serial, adb="adb"):
     """Package of the app in front on the phone, from the focused window, or None."""
     p = subprocess.run([adb, "-s", serial, "shell", "dumpsys", "window"], capture_output=True, stdin=subprocess.DEVNULL, timeout=30)
@@ -862,7 +887,7 @@ def app_in_front(serial, adb="adb"):
 
 def run_job(serial, package, out, scenario, device_label, mode="screen", reveal="above", rewind=True, fraction=0.30,
             swipe_ms=1200, max_screens=200, item_reveal="above", capture_list=True, choose=None, ask=None, say=print,
-            on_screenshot=None, should_stop=None):
+            on_screenshot=None, should_stop=None, pause_gate=None, case=None):
     """One whole run, for the command line and the window alike. mode is "screen" (walk what is open) or
     "list" (choose rows, open and walk each). Returns a dict: export, ok, lines (the summary a person
     reads), summary, manifest."""
@@ -877,6 +902,13 @@ def run_job(serial, package, out, scenario, device_label, mode="screen", reveal=
                     on_blocked="ask" if ask else "stop", rewind=rewind, ask=ask, say=say)
     if should_stop:
         walker.should_stop = should_stop
+    if pause_gate:
+        walker.pause_gate = pause_gate
+    case = {k: v for k, v in (case or {}).items() if v}
+    if case:
+        # Who ran it and under what reference, as the examiner typed it. In the chain like every other row.
+        log.add("system_event", "case_information", case)
+    log.add("system_event", "device_state", dict(device_facts(serial), when="before the run"))
     if on_screenshot:
         # The window shows each picture as it is taken.
         saved = walker.save
@@ -917,6 +949,8 @@ def run_job(serial, package, out, scenario, device_label, mode="screen", reveal=
         ok = False
         lines.append(f"{blank} of {len(log.shots)} screenshots are black: the app blocks screenshots there. "
                      "Any text for those screens is in the view trees only.")
+    log.add("system_event", "device_state", dict(device_facts(serial), when="after the run"))
+    params["case"] = case
     manifest = write_export(log, dev, package, walker.app_version, summary, params)
     lines.append(f"Latest row hash (note it somewhere else): {manifest['hash_chain']['last_row_hash']}")
     lines += ["Transcript: " + n for n in manifest.get("transcript_notes", [])]

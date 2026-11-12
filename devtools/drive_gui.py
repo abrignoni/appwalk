@@ -1,72 +1,299 @@
 #!/usr/bin/env python3
-"""Drives the AppWalk window the way a person would, against a connected phone or emulator, and saves
-pictures of the window. For checking the window end to end; not a unit test.
+"""Drives the AppWalk window through its controls, against a connected emulator, and reports what happened.
+For checking the window end to end on each operating system; not a unit test.
 
-Usage: python3.12 devtools/drive_gui.py <out folder> <shots folder> [rows to pick, default 2]
+Usage: python3 devtools/drive_gui.py <serial> <out folder> [pictures folder]
 
-It fills the form through the window's own controls (Refresh, Use the app in front, the mode, Start),
-picks the first rows in the rows dialog, and waits for the run to end. Pictures are taken with
-macOS screencapture, limited to the window's own rectangle.
+It walks the four steps the way a person would, by setting the fields and pressing the window's own
+buttons, in five scenarios:
+  A  rows from the open list, two rows, with Pause and Resume part way
+  B  only the open screen
+  C  Stop part way through a run
+  D  a lock comes to the front: the waiting dialog, and a code typed for the tool to enter (emulator test PIN)
+  E  Check this export, and Check an earlier export
+  F  the other theme (light or dark), with what was typed kept
+  G  the app in front changed after it was chosen: Start asks which one is meant
+The emulator must show the chat app's list of conversations when this starts. Pictures of the window
+are taken on macOS only (screencapture, limited to the window's rectangle).
 """
+import json
 import os
 import subprocess
 import sys
+import time
 import tkinter as tk
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import appwalk  # noqa: E402
 import appwalk_gui  # noqa: E402
 
-out, shots = sys.argv[1], sys.argv[2]
-n_rows = int(sys.argv[3]) if len(sys.argv) > 3 else 2
-os.makedirs(shots, exist_ok=True)
+serial, out = sys.argv[1], sys.argv[2]
+shots = sys.argv[3] if len(sys.argv) > 3 else None
+PIN = "739126"   # not a number that appears in any seeded text
+os.makedirs(out, exist_ok=True)
+if shots:
+    os.makedirs(shots, exist_ok=True)
+appwalk_gui.SETTINGS = os.path.join(out, "settings.json")   # never the real one
 root = tk.Tk()
 app = appwalk_gui.App(root)
 root.attributes("-topmost", True)
-state = {"picked": False, "ticks": 0, "result": "timeout"}
+report, deadline = [], [0]
+
+
+def adb(*args):
+    return subprocess.run(["adb", "-s", serial, *args], stdin=subprocess.DEVNULL, capture_output=True, timeout=60).stdout.decode("utf-8", "replace")
 
 
 def picture(name, widget=None):
+    if not shots or sys.platform != "darwin":
+        return
     w = widget or root
-    w.update_idletasks()
+    root.update()   # so the picture shows what was just set
     x, y, wd, ht = w.winfo_rootx(), w.winfo_rooty() - 28, w.winfo_width(), w.winfo_height() + 28
-    subprocess.run(["screencapture", "-x", "-R", f"{x},{y},{wd},{ht}", os.path.join(shots, name + ".png")],
-                   stdin=subprocess.DEVNULL, capture_output=True)
+    subprocess.run(["screencapture", "-x", "-R", f"{x},{y},{wd},{ht}", os.path.join(shots, name + ".png")], stdin=subprocess.DEVNULL, capture_output=True)
 
 
-def begin():
-    app.refresh_devices()
-    app.use_front_app()
-    app.mode.set("list")
-    app.out.set(out)
-    app.scenario.set("gui_check")
-    app.label.set("emuA15")
-    picture("1_form")
+def note(name, ok, detail=""):
+    report.append((name, bool(ok), detail))
+    print(("ok   " if ok else "FAIL ") + name + (": " + detail if detail else ""), flush=True)
+
+
+def rows_dialog_up():
+    return getattr(app, "rows_win", None) is not None and app.rows_win.winfo_exists()
+
+
+def blocked_dialog_up():
+    return getattr(app, "blocked_win", None) is not None and app.blocked_win.winfo_exists()
+
+
+def finished():
+    return not app.running and (app.result is not None or "failed" in app.status.get().lower())
+
+
+def to_conversation_list():
+    adb("shell", "input", "keyevent", "3")
+    time.sleep(1)
+    adb("shell", "am", "start", "-n", "com.google.android.apps.messaging/.ui.ConversationListActivity")
+    time.sleep(5)
+
+
+OTHER_APP = "com.android.settings"
+
+
+def scenario_g():
+    # G: the app in front is changed after it was chosen; Start asks which one is meant
+    adb("shell", "am", "start", "-a", "android.settings.SETTINGS")
+    time.sleep(6)
+    app.show(1)
+    app.mode.set("screen")
+    app.next_btn.invoke()
+    app.result = None
     app.start_btn.invoke()
-    root.after(500, watch)
+    up = getattr(app, "front_win", None) is not None and app.front_win.winfo_exists()
+    note("G: Start asks when a different app is in front", up and not app.running)
+    if up:
+        picture("7b_other_app", app.front_win)
+        app.front_cancel.invoke()
+        note("G: Cancel starts nothing and keeps the choice", not app.running and app.package.get() == "com.google.android.apps.messaging")
+        app.start_btn.invoke()
+        app.front_yes.invoke()
+        note("G: Yes switches to the app in front and starts", app.running and app.package.get() == OTHER_APP)
+        yield finished
+        m = app.result["manifest"] if app.result else {}
+        note("G: the export names the app that was documented", m.get("apps_under_test", [{}])[0].get("package") == OTHER_APP
+             and app.result["summary"].get("screens", 0) >= 2)
+    to_conversation_list()
+    app.package.set("com.google.android.apps.messaging")
 
 
-def watch():
-    state["ticks"] += 1
-    lb = getattr(app, "rows_list", None)
-    if lb is not None and not state["picked"] and lb.winfo_exists():
-        lb.selection_set(0, n_rows - 1)
-        picture("2_rows", lb.winfo_toplevel())
-        state["picked"] = True
-        app.rows_ok.invoke()
-    if state["picked"] and state["ticks"] % 40 == 0:
-        picture("3_running")
-    if str(app.start_btn["state"]) == "normal" and state["ticks"] > 4:
-        picture("4_done")
-        state["result"] = app.status.get()
-        root.after(300, root.destroy)
+
+def quick():
+    """Only the first two steps and scenario G, for a short rerun."""
+    app.refresh_devices()
+    match = [n for n in app.device_box["values"] if n.split()[0] == serial]
+    note("phone listed", match)
+    if not match:
         return
-    if state["ticks"] > 1800:   # 15 minutes
-        root.destroy()
+    app.device.set(match[0])
+    app.read_facts()
+    app.examiner.set("Test Examiner")
+    app.reference.set("GUI-CHECK-G")
+    app.label.set("emuA15")
+    app.next_btn.invoke()
+    app.out.set(out)
+    app.next_btn.invoke()
+    note("run step reached", app.page == 2 and app.package.get() == "com.google.android.apps.messaging", app.package.get())
+    yield from scenario_g()
+
+
+def script():
+    # Step 1
+    app.refresh_devices()
+    names = list(app.device_box["values"])
+    match = [n for n in names if n.split()[0] == serial]
+    note("phone listed", match, ", ".join(names))
+    if not match:
         return
-    root.after(500, watch)
+    app.device.set(match[0])
+    app.read_facts()
+    note("phone state shown", app.phone_state.cget("text") == "Ready", app.phone_facts.cget("text").replace("\n", " | "))
+    app.next_btn.invoke()
+    note("a phone label is asked for before going on", app.page == 0 and "label" in app.hint.cget("text"))
+    app.examiner.set("Test Examiner")
+    app.reference.set("GUI-CHECK-1")
+    app.label.set("emuA15")
+    app.notes.set("driven check")
+    picture("1_phone")
+    app.next_btn.invoke()
+    # Step 2
+    note("app in front filled in by itself", app.page == 1 and app.package.get() == "com.google.android.apps.messaging", app.package.get())
+    app.out.set(out)
+    app.mode.set("list")
+    picture("2_choose")
+    app.next_btn.invoke()
+    note("run step reached", app.page == 2)
+
+    # A: list, two rows, pause and resume
+    app.start_btn.invoke()
+    yield rows_dialog_up
+    titles = list(app.row_vars)
+    note("rows dialog lists the conversations", len(titles) >= 2, f"{len(titles)} rows")
+    note("Document these is off until a row is ticked", str(app.rows_ok["state"]) == "disabled")
+    for t in titles[1:3]:           # two short threads
+        app.row_vars[t].set(True)
+    app.rows_win.update()
+    picture("3_rows", app.rows_win)
+    app.rows_ok.configure(state="normal")
+    app.rows_ok.invoke()
+    yield lambda: app.shots >= 1 and getattr(app, "current_item", None)
+    app.pause_btn.invoke()
+    at = app.shots
+    picture("4_running")
+    yield lambda: wait_s(14)
+    note("Pause holds the run", app.shots <= at + 1 and app.running, f"screenshots {at} -> {app.shots}")
+    app.pause_btn.invoke()
+    yield finished
+    picture("5_result")
+    a_export = app.export
+    note("A: list run finished and reached the result step", app.page == 3 and app.result and app.result["ok"], app.verdict.cget("text"))
+    rows = [json.loads(x) for x in open(os.path.join(a_export, "actions.jsonl"), encoding="utf-8")]
+    acts = [r["action"] for r in rows]
+    case = next((json.loads(r["detail"]) for r in rows if r["action"] == "case_information"), {})
+    note("case details are in the log", case.get("examiner") == "Test Examiner" and case.get("reference") == "GUI-CHECK-1")
+    note("phone state logged before and after", acts.count("device_state") == 2)
+    note("the pause is in the log", "paused_by_examiner" in acts)
+    note("transcript written", os.path.exists(os.path.join(a_export, "transcript.html")) and str(app.open_btn["state"]) == "normal")
+    app.verify_btn.invoke()
+    note("E: Check this export", "Checks out" in app.result_text.get("1.0", "end"))
+    app.copy_hash()
+    note("Copy puts the row hash on the clipboard", root.clipboard_get() == app.result["manifest"]["hash_chain"]["last_row_hash"])
+    text, ok = app.verify_text(out)
+    note("E: a folder that is not an export is refused", not ok, text[:60])
+
+    # B: only the open screen (the conversation list)
+    to_conversation_list()
+    app.show(1)
+    app.mode.set("screen")
+    app.next_btn.invoke()
+    app.start_btn.invoke()
+    yield finished
+    note("B: open-screen run finished", app.result and app.result["ok"] and app.result["summary"].get("screens", 0) >= 2,
+         "; ".join(t for _, t in appwalk_gui.plain_summary(app.result))[:140] if app.result else app.status.get())
+
+    # C: stop part way
+    to_conversation_list()
+    app.show(1)
+    app.mode.set("list")
+    app.next_btn.invoke()
+    app.start_btn.invoke()
+    yield rows_dialog_up
+    for t in list(app.row_vars)[:6]:
+        app.row_vars[t].set(True)
+    app.rows_ok.configure(state="normal")
+    app.rows_ok.invoke()
+    yield lambda: getattr(app, "current_item", None)
+    app.stop_btn.invoke()
+    yield finished
+    s = app.result["summary"] if app.result else {}
+    note("C: Stop ends the run early and says so", app.result and not app.result["ok"] and s.get("items_walked", 9) < 6
+         and "look at" in app.verdict.cget("text"), f"walked {s.get('items_walked')} of 6; {s.get('stop_reason')}")
+    note("C: the stopped export still checks out", app.verify_text(app.export)[1])
+    picture("6_stopped")
+
+    # D: a lock in front; the code is typed here and entered by the tool
+    to_conversation_list()
+    adb("shell", "locksettings", "set-pin", PIN)
+    adb("shell", "input", "keyevent", "26")
+    time.sleep(2)
+    adb("shell", "input", "keyevent", "26")
+    time.sleep(2)
+    adb("shell", "input", "keyevent", "82")
+    time.sleep(2)
+    app.show(1)
+    app.mode.set("screen")
+    app.next_btn.invoke()
+    app.start_btn.invoke()
+    yield blocked_dialog_up
+    picture("7_waiting", app.blocked_win)
+    note("D: the waiting dialog comes up at the lock", True)
+    app.blocked_code.set(PIN)
+    app.blocked_type.invoke()
+    yield finished
+    adb("shell", "locksettings", "clear", "--old", PIN)
+    d_export = app.export
+    blob = b"".join(open(os.path.join(dp, f), "rb").read() for dp, _, fs in os.walk(d_export) for f in fs) if d_export else b""
+    acts = [json.loads(x)["action"] for x in open(os.path.join(d_export, "actions.jsonl"), encoding="utf-8")] if d_export else []
+    note("D: the run went on after the code was typed", app.result and app.result["summary"].get("screens", 0) >= 1 and "secret_entered" in acts)
+    note("D: the code is in no file of the export", d_export and PIN.encode() not in blob)
+    yield from scenario_g()
+
+    # F: the other theme, with everything typed kept
+    was = app.theme
+    app.theme_btn.invoke()
+    note("F: theme switched and the fields kept", app.theme != was and app.examiner.get() == "Test Examiner"
+         and app.page == 3 and "screenshots" in app.result_text.get("1.0", "end"), f"{was} -> {app.theme}")
+    picture("8_result_" + app.theme)
+    for n, name in ((0, "9_phone_"), (1, "10_choose_"), (2, "11_run_")):
+        app.show(n)
+        picture(name + app.theme)
+    note("F: the choice of theme is remembered", json.load(open(appwalk_gui.SETTINGS, encoding="utf-8")).get("theme") == app.theme)
+    saved = json.load(open(appwalk_gui.SETTINGS, encoding="utf-8"))
+    note("settings remembered, without the case reference", saved.get("examiner") == "Test Examiner" and "reference" not in saved)
 
 
-root.after(800, begin)
+started = {"t": 0.0}
+
+
+def wait_s(seconds):
+    if not started["t"]:
+        started["t"] = time.time()
+    if time.time() - started["t"] >= seconds:
+        started["t"] = 0.0
+        return True
+    return False
+
+
+gen = quick() if os.environ.get("APPWALK_DRIVE") == "quick" else script()
+waiting = [None]
+
+
+def pump():
+    try:
+        if waiting[0] is None or waiting[0]():
+            deadline[0] = time.time() + 900
+            waiting[0] = next(gen)
+        elif time.time() > deadline[0]:
+            note("timed out waiting", False, app.status.get())
+            raise StopIteration
+    except StopIteration:
+        failed = [n for n, ok, _ in report if not ok]
+        print(f"\n{len(report) - len(failed)} of {len(report)} checks passed" + (": FAILED " + "; ".join(failed) if failed else ""), flush=True)
+        app.close()
+        return
+    root.after(300, pump)
+
+
+deadline[0] = time.time() + 900
+root.after(800, pump)
 root.mainloop()
-print("status:", state["result"])
-print("export:", app.export)
+sys.exit(0 if report and all(ok for _, ok, _ in report) else 1)

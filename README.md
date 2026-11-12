@@ -58,11 +58,35 @@ Or use the window, which runs the same code with no terminal:
 python3.12 appwalk_gui.py
 ```
 
-Pick the phone, press "Use the app in front", choose between the open screen and rows from the open
-list, and press Start. The window shows each screenshot as it is taken, asks which rows to open, and
-asks what to do when a lock or another app is in front. "Open transcript" opens the result. It needs
-a Python whose Tk is 8.6; on macOS the python.org 3.14 build has Tk 9, and the window refuses to
-start there.
+It has four steps:
+
+1. **Phone.** Shows the connected phone and its state: model, Android version, battery, airplane mode,
+   Wi-Fi, and how far its clock is from the computer's. It warns when the phone is online, the battery
+   is low or the screen times out quickly. The examiner's name, a case reference, a label for the
+   phone and a note are typed here and written into the log.
+2. **What to document.** Fills in the app that is in front, and offers the open screen or rows chosen
+   from the open list.
+3. **Run.** Start, Pause and Stop. Each screenshot shows as it is taken. A picker lists the rows found,
+   with a box to narrow the list. If a lock or another app comes to the front, a dialog waits for the
+   examiner. If the app in front is no longer the one chosen when Start is pressed, it asks which one
+   is meant.
+4. **Result.** What was captured, in sentences, with anything to look at in a warning colour. Buttons
+   open the transcript and the folder, check the export, and copy the latest row hash.
+
+Light and dark themes: it starts in the system's setting on macOS and Windows, and the Light or Dark
+button in the header switches. Examiner, phone label, folder and theme are remembered in
+`~/.appwalk/settings.json`; the case reference and note are not.
+
+Every run from the window or the command line now also logs the phone's state before and after it,
+and a pause as its own row.
+
+It needs a Python whose Tk is 8.6; on macOS the python.org 3.14 build has Tk 9, and the window
+refuses to start there.
+
+Driven through its own controls against an Android 15 emulator (`devtools/drive_gui.py`): 29 checks on
+macOS, and on Ubuntu 26.04 and Windows 11 (both ARM64) 25 checks before the last addition and the 6
+checks of the short run after it. The checks cover each step, Pause, Stop, the lock dialog with a typed
+code, the question about a different app, Check this export, Copy, and the theme switch.
 
 Needs Python 3 and adb. Pillow is optional: with it, a black frame is recorded as `blank`.
 
