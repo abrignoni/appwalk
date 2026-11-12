@@ -52,6 +52,18 @@ How `walk-list` opens a row: it finds the row going forward through the list, ta
 that another screen came up, walks it, then presses Back until the list is in front again. A row that
 does not open is reported and the rest go on. If Back leaves the app, the run stops.
 
+Or use the window, which runs the same code with no terminal:
+
+```bash
+python3.12 appwalk_gui.py
+```
+
+Pick the phone, press "Use the app in front", choose between the open screen and rows from the open
+list, and press Start. The window shows each screenshot as it is taken, asks which rows to open, and
+asks what to do when a lock or another app is in front. "Open transcript" opens the result. It needs
+a Python whose Tk is 8.6; on macOS the python.org 3.14 build has Tk 9, and the window refuses to
+start there.
+
 Needs Python 3 and adb. Pillow is optional: with it, a black frame is recorded as `blank`.
 
 What a walk does:

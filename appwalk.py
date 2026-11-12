@@ -309,6 +309,7 @@ class Walker:
         self.on_blocked, self.ask, self.sleep, self.say = on_blocked, ask, sleep, say
         self.rewind, self.max_rewind_scrolls = rewind, max_rewind_scrolls
         self.app_version = device.app_version(package)
+        self.should_stop = lambda: False   # the window's Stop button; checked between steps
         self.step = 0      # screenshots taken in this export, across every walk
         self.item = None   # what is being walked, when the tool opened it from a list
         self.walks = []    # one summary per walk
@@ -385,6 +386,9 @@ class Walker:
             return self.finish()
         prev_fp, prev_labels, unchanged, fraction = None, None, 0, self.fraction
         while True:
+            if self.should_stop():
+                s["stop_reason"] = "stopped by the examiner; the end was not reached"
+                break
             tree, png, stamp, attempt = self.settled_capture(capture)
             if png is None:
                 if self.blocked(tree):
@@ -476,6 +480,9 @@ class Walker:
         s = self.summary
         prev, unchanged, rewind_note = None, 0, None
         while True:
+            if self.should_stop():
+                s["stop_reason"] = "stopped by the examiner before the walk"
+                return False
             tree = Tree(self.d.tree_raw())
             if not self.in_front(tree):
                 if self.blocked(tree):
@@ -595,6 +602,9 @@ class ListWalk:
             return res
         for title in selected:
             w.item = None
+            if w.should_stop():
+                res["stop_reason"] = "stopped by the examiner"
+                break
             opened = self.open(title)
             if opened is None:
                 res["stop_reason"] = f"blocked while opening {title!r}"
@@ -831,6 +841,90 @@ def ask_examiner(allow_secret):
     return ask
 
 
+def list_devices(adb="adb"):
+    """[(serial, state, description)] as adb lists them."""
+    p = subprocess.run([adb, "devices", "-l"], capture_output=True, stdin=subprocess.DEVNULL, timeout=30)
+    out = []
+    for line in p.stdout.decode("utf-8", "replace").splitlines()[1:]:
+        parts = line.split()
+        if len(parts) >= 2:
+            model = next((x.split(":", 1)[1] for x in parts[2:] if x.startswith("model:")), "")
+            out.append((parts[0], parts[1], model))
+    return out
+
+
+def app_in_front(serial, adb="adb"):
+    """Package of the app in front on the phone, from the focused window, or None."""
+    p = subprocess.run([adb, "-s", serial, "shell", "dumpsys", "window"], capture_output=True, stdin=subprocess.DEVNULL, timeout=30)
+    m = re.search(r"mCurrentFocus=Window\{[^}]*\s([A-Za-z0-9_.]+)/", p.stdout.decode("utf-8", "replace"))
+    return m.group(1) if m else None
+
+
+def run_job(serial, package, out, scenario, device_label, mode="screen", reveal="above", rewind=True, fraction=0.30,
+            swipe_ms=1200, max_screens=200, item_reveal="above", capture_list=True, choose=None, ask=None, say=print,
+            on_screenshot=None, should_stop=None):
+    """One whole run, for the command line and the window alike. mode is "screen" (walk what is open) or
+    "list" (choose rows, open and walk each). Returns a dict: export, ok, lines (the summary a person
+    reads), summary, manifest."""
+    dev = AdbDevice(serial)
+    stamp = dev.stamp()
+    t = datetime.fromtimestamp(stamp["utc_ms"] / 1000, tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    safe = lambda x: re.sub(r"[^A-Za-z0-9._-]", "_", x) or "unnamed"
+    export = os.path.join(out, f"kdl_{safe(scenario)}_{safe(device_label)}_{t}")
+    os.makedirs(export)
+    log = Log(export, scenario, device_label, dev)
+    walker = Walker(dev, log, package, reveal=reveal, fraction=fraction, swipe_ms=swipe_ms, max_screens=max_screens,
+                    on_blocked="ask" if ask else "stop", rewind=rewind, ask=ask, say=say)
+    if should_stop:
+        walker.should_stop = should_stop
+    if on_screenshot:
+        # The window shows each picture as it is taken.
+        saved = walker.save
+
+        def save_and_tell(*a, **k):
+            saved(*a, **k)
+            on_screenshot(os.path.join(export, "screens", log.shots[-1]["file"]), walker.step, walker.item)
+        walker.save = save_and_tell
+    params = dict(serial=serial, package=package, mode=mode, reveal=reveal, rewind=rewind, fraction=fraction, swipe_ms=swipe_ms,
+                  max_screens=max_screens, item_reveal=item_reveal, capture_list=capture_list, on_blocked="ask" if ask else "stop")
+
+    def clean(s, need_rewind=True):
+        return bool(s["gaps"] == 0 and s["unsettled"] == 0 and s["end_confirmed"] and (not need_rewind or s["rewind_end_confirmed"]))
+
+    if mode == "screen":
+        summary = walker.run()
+        ok = clean(summary, rewind)
+        lines = [f"Screens {summary['screens']}, scrolls {summary['scrolls']} (plus {summary['rewind_scrolls']} to reach the far end), "
+                 f"gaps {summary['gaps']}, blank {summary['blank']}, unsettled {summary['unsettled']}. "
+                 f"Far end confirmed: {summary['rewind_end_confirmed']}. Stopped: {summary['stop_reason']}"]
+    else:
+        lw = ListWalk(walker, item_reveal=item_reveal, capture_list=capture_list)
+        summary = lw.run(choose or chooser("all", []))
+        items = [s for s in walker.walks if s["item"]]
+        summary["walks"] = items
+        ok = (summary["stop_reason"] is None and not summary["items_not_opened"] and clean(summary["list"])
+              and len(items) == len(summary["items_selected"]) and all(clean(s) for s in items))
+        lines = [f"Rows found {summary['items_found']}, chosen {len(summary['items_selected'])}, opened and walked {summary['items_walked']}, "
+                 f"not opened {len(summary['items_not_opened'])}. Screenshots {walker.step}."]
+        for s in items:
+            lines.append(f"  {s['item']}: {s['screens']} screens, gaps {s['gaps']}, far end {s['rewind_end_confirmed']}, end {s['end_confirmed']}")
+        if summary["duplicate_titles"]:
+            lines.append("Rows sharing a title (only the first of each was opened): " + ", ".join(summary["duplicate_titles"]))
+        if summary["stop_reason"]:
+            lines.append("Stopped: " + summary["stop_reason"])
+    blank = sum(1 for s in log.shots if s["status"] == "blank")
+    if blank:
+        ok = False
+        lines.append(f"{blank} of {len(log.shots)} screenshots are black: the app blocks screenshots there. "
+                     "Any text for those screens is in the view trees only.")
+    manifest = write_export(log, dev, package, walker.app_version, summary, params)
+    lines.append(f"Latest row hash (note it somewhere else): {manifest['hash_chain']['last_row_hash']}")
+    lines += ["Transcript: " + n for n in manifest.get("transcript_notes", [])]
+    if not ok:
+        lines.append("WARNING: this run is not complete or not confirmed. Read the stop reasons and the log.")
+    return {"export": export, "ok": ok, "lines": lines, "summary": summary, "manifest": manifest}
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -873,56 +967,16 @@ def main(argv=None):
             print("note:", n)
         return 0
 
-    dev = AdbDevice(a.serial)
-    stamp = dev.stamp()
-    t = datetime.fromtimestamp(stamp["utc_ms"] / 1000, tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    safe = lambda x: re.sub(r"[^A-Za-z0-9._-]", "_", x) or "unnamed"
-    out = os.path.join(a.out, f"kdl_{safe(a.scenario)}_{safe(a.device_label)}_{t}")
-    os.makedirs(out)
-    log = Log(out, a.scenario, a.device_label, dev)
-    walker = Walker(dev, log, a.package, reveal=getattr(a, "reveal", "above"), fraction=a.fraction, swipe_ms=a.swipe_ms,
-                    max_screens=a.max_screens, on_blocked=a.on_blocked, rewind=not getattr(a, "no_rewind", False),
-                    ask=ask_examiner(a.allow_secret_entry) if a.on_blocked == "ask" else None)
-    params = {k: v for k, v in vars(a).items() if k not in ("out", "cmd")}
-
-    def clean(s, need_rewind=True):
-        return bool(s["gaps"] == 0 and s["unsettled"] == 0 and s["end_confirmed"] and (not need_rewind or s["rewind_end_confirmed"]))
-
-    if a.cmd == "walk":
-        summary = walker.run()
-        ok = clean(summary, not a.no_rewind)
-        lines = [f"Screens {summary['screens']}, scrolls {summary['scrolls']} (plus {summary['rewind_scrolls']} to reach the far end), "
-                 f"gaps {summary['gaps']}, blank {summary['blank']}, unsettled {summary['unsettled']}. "
-                 f"Far end confirmed: {summary['rewind_end_confirmed']}. Stopped: {summary['stop_reason']}"]
-    else:
-        lw = ListWalk(walker, item_reveal=a.item_reveal, capture_list=not a.skip_list_capture)
-        summary = lw.run(chooser(a.select, a.match))
-        items = [s for s in walker.walks if s["item"]]
-        summary["walks"] = items
-        ok = (summary["stop_reason"] is None and not summary["items_not_opened"] and clean(summary["list"])
-              and len(items) == len(summary["items_selected"]) and all(clean(s) for s in items))
-        lines = [f"Rows found {summary['items_found']}, chosen {len(summary['items_selected'])}, opened and walked {summary['items_walked']}, "
-                 f"not opened {len(summary['items_not_opened'])}. Screenshots {walker.step}."]
-        for s in items:
-            lines.append(f"  {s['item']}: {s['screens']} screens, gaps {s['gaps']}, far end {s['rewind_end_confirmed']}, end {s['end_confirmed']}")
-        if summary["duplicate_titles"]:
-            lines.append("Rows sharing a title (only the first of each was opened): " + ", ".join(summary["duplicate_titles"]))
-        if summary["stop_reason"]:
-            lines.append("Stopped: " + summary["stop_reason"])
-    blank = sum(1 for s in log.shots if s["status"] == "blank")
-    if blank:
-        ok = False
-        lines.append(f"{blank} of {len(log.shots)} screenshots are black: the app blocks screenshots there. "
-                     "Any text for those screens is in the view trees only.")
-    manifest = write_export(log, dev, a.package, walker.app_version, summary, params)
-    print(f"\nExport: {out}")
-    print("\n".join(lines))
-    print(f"Latest row hash (note it somewhere else): {manifest['hash_chain']['last_row_hash']}")
-    for n in manifest.get("transcript_notes", []):
-        print("Transcript:", n)
-    if not ok:
-        print("WARNING: this run is not complete or not confirmed. Read the stop reasons and the log.")
-    return 0 if ok else 2
+    job = dict(serial=a.serial, package=a.package, out=a.out, scenario=a.scenario, device_label=a.device_label,
+               mode="list" if a.cmd == "walk-list" else "screen", reveal=getattr(a, "reveal", "above"),
+               rewind=not getattr(a, "no_rewind", False), fraction=a.fraction, swipe_ms=a.swipe_ms, max_screens=a.max_screens,
+               item_reveal=getattr(a, "item_reveal", "above"), capture_list=not getattr(a, "skip_list_capture", False),
+               choose=chooser(a.select, a.match) if a.cmd == "walk-list" else None,
+               ask=ask_examiner(a.allow_secret_entry) if a.on_blocked == "ask" else None)
+    r = run_job(**job)
+    print(f"\nExport: {r['export']}")
+    print("\n".join(r["lines"]))
+    return 0 if r["ok"] else 2
 
 
 if __name__ == "__main__":
