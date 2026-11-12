@@ -2,6 +2,7 @@
 
 No adb and no device are used. Every text here is fictional.
 """
+import io
 import json
 import os
 import shutil
@@ -30,12 +31,16 @@ class FakePhone:
     `offset` is the distance from the top of the list to the top of the window."""
 
     def __init__(self, count=40, item_h=100, view_h=1000, start="bottom", take_swipes=True, swipe_gain=1.0,
-                 scrollable=True, front=PKG, password=False, colour=(255, 255, 255)):
+                 scrollable=True, front=PKG, password=False, colour=(255, 255, 255), text=True, photo=False, draw=False):
         self.count, self.item_h, self.view_h = count, item_h, view_h
         self.max_offset = max(0, count * item_h - view_h)
         self.offset = {"bottom": self.max_offset, "top": 0, "middle": self.max_offset // 2}[start]
         self.take_swipes, self.swipe_gain, self.scrollable = take_swipes, swipe_gain, scrollable
         self.front, self.password, self.colour = front, password, colour
+        # text: each item has a line of text. photo: each item also has a view described only as "Photo",
+        # the same on every item (as picture labels and delivery ticks are in Signal). draw: screenshots
+        # show each item as its own pattern, so two screenshots can be compared.
+        self.text, self.photo, self.draw = text, photo, draw
         self.clock = 1_800_000_000_000
         self.swipes, self.typed = [], []
 
@@ -50,9 +55,13 @@ class FakePhone:
             top = i * self.item_h - self.offset
             if top + self.item_h <= 0 or top >= self.view_h:
                 continue
-            items.append(f'<node class="android.widget.TextView" package="{self.front}" resource-id="{self.front}:id/message_text" '
-                         f'text="item {i + 1:03d}" content-desc="" password="false" scrollable="false" checked="false" selected="false" '
-                         f'bounds="[0,{max(0, top) + 200}][1080,{min(self.view_h, top + self.item_h) + 200}]" />')
+            b = f'bounds="[0,{max(0, top) + 200}][1080,{min(self.view_h, top + self.item_h) + 200}]"'
+            if self.text:
+                items.append(f'<node class="android.widget.TextView" package="{self.front}" resource-id="{self.front}:id/message_text" '
+                             f'text="item {i + 1:03d}" content-desc="" password="false" scrollable="false" checked="false" selected="false" {b} />')
+            if self.photo:
+                items.append(f'<node class="android.widget.ImageView" package="{self.front}" resource-id="{self.front}:id/image" '
+                             f'text="" content-desc="Photo" password="false" scrollable="false" checked="false" selected="false" {b} />')
         secret = (f'<node class="android.widget.EditText" package="{self.front}" resource-id="{self.front}:id/pin" text="9041" '
                   f'content-desc="" password="true" scrollable="false" checked="false" selected="false" bounds="[0,0][1080,100]" />'
                   if self.password else "")
@@ -66,7 +75,22 @@ class FakePhone:
                 f'bounds="[0,200][1080,{200 + self.view_h}]">{"".join(items)}</node></node></hierarchy>').encode("utf-8")
 
     def screenshot(self):
-        return png(self.colour)
+        if not self.draw:
+            return png(self.colour)
+        from PIL import Image, ImageDraw
+        im = Image.new("RGB", (1080, 1400), (250, 250, 250))
+        d = ImageDraw.Draw(im)
+        for i in range(self.count):
+            top = i * self.item_h - self.offset
+            if top + self.item_h <= 0 or top >= self.view_h:
+                continue
+            grey = 30 + (i * 53) % 180
+            for y in range(max(0, top), min(self.view_h, top + self.item_h)):
+                shade = grey if (y - top) % 20 < 10 else min(255, grey + 50)
+                d.line([(40 + (i * 37) % 300, y + 200), (700 + (i * 41) % 300, y + 200)], fill=(shade, shade, shade))
+        buf = io.BytesIO()
+        im.save(buf, "PNG")
+        return buf.getvalue()
 
     def swipe(self, x1, y1, x2, y2, ms):
         self.swipes.append((y1, y2, ms))
@@ -517,6 +541,40 @@ class ExportTests(unittest.TestCase):
         e = make_documentation.load_export(out)
         self.assertEqual([c for c in e["checks"] if make_documentation.failed(c[1])], [])
         self.assertTrue(dict(e["checks"])["hash chain"].startswith("intact"))
+
+
+@unittest.skipUnless(appwalk.pixels_available(), "needs Pillow")
+class ContinuityTests(unittest.TestCase):
+    """Two frames continue each other only on evidence: a shared line of text, or screenshots that overlap."""
+
+    def walk(self, **kw):
+        out, log, s = run(FakePhone(count=40, **{k: v for k, v in kw.items() if k != "fraction"}), fraction=kw.get("fraction", 0.5))
+        joins = [json.loads(r["detail"])["continuity_with_previous_step"] for r in log.rows if r["action"] == "screenshot"]
+        return s, [j for j in joins if j]
+
+    def test_a_shared_description_does_not_hide_a_gap(self):
+        # Every item reads "Photo" and no item has text; each swipe moves three times as far as asked.
+        # Items of 130 px, so a scroll changes where they sit and the tree shows that something moved.
+        s, joins = self.walk(text=False, photo=True, swipe_gain=3.0, item_h=130)
+        self.assertGreater(s["gaps"], 0)                 # the old rule saw "Photo" on both frames and found none
+        self.assertTrue(all(j["by"] == "screenshots" for j in joins))
+
+    def test_screenshots_join_frames_that_share_no_text(self):
+        # Items of 100 px moved by whole items: the tree is the same before and after every scroll, and only
+        # the screenshots show that the list moved. Before, the walk stopped after three screens.
+        s, joins = self.walk(text=False, photo=True, draw=True)
+        self.assertGreater(s["screens"], 5)
+        self.assertEqual(s["gaps"], 0)
+        self.assertTrue(joins and all(j["joined"] and j["by"] == "screenshots" and j["overlap_px"] for j in joins))
+
+    def test_screenshots_that_do_not_overlap_are_a_gap(self):
+        s, joins = self.walk(text=False, photo=True, draw=True, swipe_gain=3.0, item_h=130)
+        self.assertGreater(s["gaps"], 0)
+
+    def test_shared_text_still_joins_without_looking_at_pictures(self):
+        s, joins = self.walk()
+        self.assertEqual(s["gaps"], 0)
+        self.assertTrue(joins and all(j["by"] == "text" for j in joins))
 
 
 class TeachTests(unittest.TestCase):

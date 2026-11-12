@@ -116,9 +116,16 @@ What a walk does:
    frames are now joined by the pictures.
 3. Scrolls about 70% of the list height (`--fraction`, default 0.70), so each screenshot is mostly new
    and consecutive frames still overlap. 0.30 is the cautious setting.
-   If a frame shares nothing with the one before, it logs a gap, goes back and comes forward in
-   smaller moves.
-4. Stops when two scrolls in a row change nothing, at `--max-screens`, or when blocked.
+   Two frames continue each other when they share a line of text. A shared description does not
+   count: labels such as a delivery tick or "Photo" repeat on many bubbles, and in Signal two frames
+   that shared no text still shared five of them. With no shared text, the two screenshots are
+   compared and must clearly overlap. Otherwise the walker logs a gap, goes back and comes forward in
+   smaller moves. Each screenshot's row records how it was joined to the one before. Without Pillow,
+   any shared label still counts, as before.
+4. Stops when two scrolls in a row change nothing, at `--max-screens`, or when blocked. When every
+   item looks alike to the view tree and a scroll moves by whole items, the tree is the same after a
+   scroll; the screenshots are then compared, and a clear shift counts as a move, so such a list is
+   not taken for its end. (In a made-up test, the walk had stopped after three screens.)
 5. Before calling an end confirmed, it scrolls a little the other way. "Nothing moved" can also
    mean the swipe was not taken, and that looked the same as the end of the list in the first run.
    If the screen does not move either way, the stop reason says the end is not confirmed and the

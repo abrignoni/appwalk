@@ -216,8 +216,10 @@ def picture_overlap(prev_png, cur_png, list_bounds, reveal):
         from PIL import Image, ImageChops, ImageStat
     except ImportError:
         return None
+    import io
+    opened = lambda x: Image.open(io.BytesIO(x) if isinstance(x, (bytes, bytearray)) else x)   # a path, or the bytes the walker holds
     try:
-        a, b = Image.open(prev_png).convert("L"), Image.open(cur_png).convert("L")
+        a, b = opened(prev_png).convert("L"), opened(cur_png).convert("L")
     except OSError:
         return None
     if a.size != b.size:

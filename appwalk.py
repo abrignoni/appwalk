@@ -447,7 +447,7 @@ class Walker:
             "rewind": do_rewind})
         if do_rewind and not self.go_to_far_end():
             return self.finish()
-        prev_fp, prev_labels, unchanged, fraction = None, None, 0, self.fraction
+        prev_fp, prev_labels, prev_png, unchanged, fraction = None, None, None, 0, self.fraction
         while True:
             waited = self.pause_gate()
             if waited:
@@ -465,12 +465,13 @@ class Walker:
             s["screens"] += 1
             fp = tree.fingerprint(self.package)
             labels = tree.labels(self.package)
-            same = prev_fp is not None and fp == prev_fp
+            same = prev_fp is not None and fp == prev_fp and not self.moved_in_pictures(tree, png, prev_png)
             overlap = None if prev_labels is None else len(labels & prev_labels)
+            joined = None if prev_labels is None or same else self.joined(tree, labels, prev_labels, png, prev_png)
             if on_tree:
                 on_tree(tree)
             if capture:
-                self.save(tree, png, stamp, attempt, fp, same, overlap, len(labels))
+                self.save(tree, png, stamp, attempt, fp, same, overlap, len(labels), joined)
 
             if same:
                 unchanged += 1
@@ -480,28 +481,62 @@ class Walker:
                     break
             else:
                 unchanged = 0
-                if prev_labels is not None and overlap == 0 and labels and prev_labels:
-                    # Nothing on this frame was on the one before: content between them may be missing.
+                if joined is not None and not joined["joined"]:
+                    # Nothing shows that this frame continues the one before: content between them may be missing.
                     s["gaps"] += 1
                     retry = fraction > 0.08
                     self.add("system_event", "continuity_gap", {"after_screen": s["screens"] - 1, "before_screen": s["screens"],
-                                                                "going_back_to_retry": retry})
+                                                                "going_back_to_retry": retry, "checked_by": joined["by"]})
                     if retry:
                         # Go back by the distance just scrolled and come forward again in smaller moves.
                         self.scroll(tree, fraction, reverse=True)
                         fraction = max(0.08, fraction / 2)
                         self.sleep(self.settle_s)
-                        prev_fp, prev_labels = None, None
+                        prev_fp, prev_labels, prev_png = None, None, None
                         continue
             if s["screens"] >= self.max_screens:
                 s["stop_reason"] = f"cap of {self.max_screens} screens reached; the end was not confirmed"
                 break
-            prev_fp, prev_labels = fp, labels
+            prev_fp, prev_labels, prev_png = fp, labels, png
             if not self.scroll(tree, fraction):
                 s["stop_reason"] = "nothing to scroll in this window"
                 break
             self.sleep(self.settle_s)
         return self.finish()
+
+    def moved_in_pictures(self, tree, png, prev_png):
+        """True when the view tree is unchanged but the screenshots show the list clearly shifted. A list of
+        items that all look alike to the tree ("Photo", the same id) gives the same tree after a scroll of
+        whole items, and the walk would stop early, calling the end reached. A clear shift is asked for, not
+        just any difference, so an animation at the end of a list does not keep the walk going."""
+        if not (png and prev_png and pixels_available()):
+            return False
+        box = tree.scroll_container(self.package)
+        bounds = box["bounds"] if box else None
+        if same_area(prev_png, png, bounds):
+            return False
+        import transcript
+        return bool(transcript.picture_overlap(prev_png, png, bounds, self.reveal)) if bounds else False
+
+    def joined(self, tree, labels, prev_labels, png, prev_png):
+        """Whether this frame continues the one before, and on what evidence.
+
+        A line of text on both frames joins them. A shared description does not: labels such as a delivery
+        tick or "Photo" repeat on many bubbles (in Signal on a Pixel 7a, two frames shared no text and five
+        such labels each), so they would hide a gap. With no shared text the two screenshots are compared
+        instead (transcript.picture_overlap, the test the transcript uses). Without Pillow, or with no
+        screenshots kept, the old rule stands: any shared label joins."""
+        text = sum(1 for lab in labels & prev_labels if lab[1])
+        if text:
+            return {"joined": True, "by": "text", "text_shared": text}
+        if png and prev_png and pixels_available():
+            import transcript
+            box = tree.scroll_container(self.package)
+            px = transcript.picture_overlap(prev_png, png, box["bounds"] if box else None, self.reveal) if box else None
+            return {"joined": bool(px), "by": "screenshots", "text_shared": 0, "overlap_px": px}
+        if not (labels and prev_labels):
+            return {"joined": True, "by": "nothing to compare", "text_shared": 0}
+        return {"joined": bool(labels & prev_labels), "by": "any shared label (no screenshots to compare)", "text_shared": 0}
 
     def finish(self):
         s = self.summary
@@ -509,7 +544,7 @@ class Walker:
         self.walks.append(dict(s))
         return s
 
-    def save(self, tree, png, stamp, attempt, fp, same, overlap, n_labels):
+    def save(self, tree, png, stamp, attempt, fp, same, overlap, n_labels, joined=None):
         """Writes one screenshot and its view tree, and the chained row that holds both hashes."""
         s = self.summary
         self.step += 1
@@ -529,6 +564,7 @@ class Walker:
                   "tree_file": tree_name, "tree_sha256": sha256(tree.xml), "tree_fingerprint": fp,
                   "tree_same_before_and_after_screenshot": attempt != -1, "capture_attempts": abs(attempt),
                   "same_as_previous_step": same, "labels_shared_with_previous_step": overlap,
+                  "continuity_with_previous_step": joined,
                   "password_fields_removed": tree.secret_fields}
         row = self.add("auto_event", "screenshot", detail, stamp=stamp, entry_id=entry,
                        screenshot={"file": png_name, "sha256": detail["png_sha256"], "status": status})
