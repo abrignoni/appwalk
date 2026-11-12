@@ -298,4 +298,5 @@ and the comparison with ALEAPP.
 
 ## License
 
-Not chosen yet.
+MIT. See [LICENSE](LICENSE). Third-party packages AppWalk uses when they are installed, and their
+licences, are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
