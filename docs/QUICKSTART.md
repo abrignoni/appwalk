@@ -131,8 +131,9 @@ run that was stopped, screenshots that came back black, a list whose end was not
 - **Latest row hash**: copy it and write it down somewhere else, such as your notes. Checked later
   against the export, it shows whether the rows up to it were changed or removed, or the log was cut
   before it. AppWalk does not do
-  that check yet; KDL's `make_documentation.py <export folder> -o out.xlsx --expect-hash <hash>` reads
-  AppWalk exports and does.
+  that check yet; KDL's `make_documentation.py <export folder> -o out.xlsx --expect-hash <hash>` does.
+  Use the script from KDL 0.5.0 or later: it was run on an AppWalk export and found the noted hash,
+  and a wrong hash gave a WARNING.
 - **Document something else** goes back to step 2 for another app or another list on the same phone.
 
 ## What is in the folder

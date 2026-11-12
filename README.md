@@ -127,7 +127,7 @@ KDL's `tools/make_documentation.py` reads the export and checks the chain. `appw
 checks every image and tree against the hash in its row, and reports files that have no row.
 
 The text of password fields is removed from a view tree before it is saved or hashed. A code the
-examiner types at the workstation is never written anywhere.
+examiner types at the workstation was in no file of the export in the emulator test.
 
 ## Transcript
 

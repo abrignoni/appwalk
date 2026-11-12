@@ -99,6 +99,9 @@ class App:
         self.theme = remembered.get("theme") if remembered.get("theme") in PALETTES else system_theme()
         self.page = 0
         self.build()
+        # A hint about a missing field goes away once the field is filled. Set once: the variables outlive build().
+        for v in (self.label, self.package, self.out):
+            v.trace_add("write", lambda *_: self.hint.configure(text=""))
         self.refresh_devices()
         self.poller = root.after(100, self.poll)
         self.ticker = root.after(1000, self.tick)
@@ -137,9 +140,6 @@ class App:
         self.hint.pack(side="right", padx=14)
 
         self.pages = [self.page_phone(), self.page_choose(), self.page_run(), self.page_result()]
-        # A hint about a missing field goes away once the field is filled.
-        for v in (self.label, self.package, self.out):
-            v.trace_add("write", lambda *_: self.hint.configure(text=""))
         self.show(self.page)
         if self.serial():
             self.read_facts()
