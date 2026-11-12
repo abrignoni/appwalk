@@ -519,6 +519,68 @@ class ExportTests(unittest.TestCase):
         self.assertTrue(dict(e["checks"])["hash chain"].startswith("intact"))
 
 
+class TeachTests(unittest.TestCase):
+    """A profile from clicks on a made-up view tree, as the Teach dialog makes it."""
+
+    def export(self, nodes):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
+        os.makedirs(os.path.join(d, "trees"))
+        with open(os.path.join(d, "manifest.json"), "w", encoding="utf-8") as f:
+            json.dump({"apps_under_test": [{"package": "p", "version_name_at_add": "1.0"}]}, f)
+        with open(os.path.join(d, "actions.jsonl"), "w", encoding="utf-8") as f:
+            f.write(json.dumps({"action": "device_state", "detail": json.dumps({"manufacturer": "M", "model": "X", "android": "15"})}) + "\n")
+        tree = os.path.join(d, "trees", "t.xml")
+        with open(tree, "w", encoding="utf-8") as f:
+            f.write('<?xml version="1.0"?><hierarchy><node class="androidx.recyclerview.widget.RecyclerView" package="p" '
+                    'resource-id="p:id/list" scrollable="true" bounds="[0,0][1080,2000]" text="" content-desc="">'
+                    + nodes + "</node></hierarchy>")
+        return d, tree
+
+    def node(self, rid, b, text="", desc="", inner=""):
+        return (f'<node class="V" package="p" resource-id="{"p:id/" + rid if rid else ""}" bounds="[{b[0]},{b[1]}][{b[2]},{b[3]}]" '
+                f'text="{text}" content-desc="{desc}">{inner}</node>')
+
+    def test_bubbles_sides_and_a_nested_picture(self):
+        import teach
+        n = self.node
+        rows = (n("row", (0, 100, 1080, 400), inner=n("bubble", (205, 110, 1038, 390), inner=n("quote", (253, 120, 941, 180), "q")
+                                                                                        + n("body", (237, 200, 709, 260), "ok")))
+                + n("row", (0, 500, 1080, 700), inner=n("bubble", (40, 510, 600, 690), inner=n("body", (60, 520, 580, 600), "hi")
+                                                                                       + n("when", (60, 620, 200, 660), "9:00")))
+                + n("row", (0, 800, 1080, 1300), inner=n("image", (500, 810, 1038, 1290), desc="Photo",
+                                                         inner=n("thumb", (510, 820, 1028, 1280), desc="Photo"))))
+        d, tree = self.export(rows)
+        click = lambda x, y: teach.view_at(tree, "p", x, y)
+        answers = {"sent": click(300, 230), "received": click(100, 560), "time": click(100, 640),
+                   "picture": click(700, 1000), "author": None}
+        prof, warnings = teach.make_profile(d, answers)
+        self.assertEqual(prof["message_ids"], ["body"])
+        self.assertEqual(prof["bubble_ids"], ["bubble"])          # the short reply reads as right only by its bubble
+        self.assertEqual({r["value"]: r["direction"] for r in prof["direction_rules"]}, {"right": "sent", "left": "received"})
+        self.assertEqual(prof["time_ids"], ["when"])
+        self.assertEqual(prof["described_ids"], ["image"])        # the outer named view, so a picture is one line
+        self.assertIsNone(click(5, 5))                            # nothing labelled there
+        self.assertEqual(warnings, [])
+
+    def test_one_column_and_text_with_no_id(self):
+        import teach
+        n = self.node
+        rows = (n("", (0, 100, 1080, 300), inner=n("author_name", (150, 110, 300, 150), "Ana")
+                                              + n("accessories_view", (150, 160, 1060, 290), inner=n("", (150, 170, 1060, 210), "hello")))
+                + n("", (0, 400, 1080, 600), inner=n("accessories_view", (150, 410, 1060, 590), inner=n("", (150, 420, 1060, 460), "hey"))))
+        d, tree = self.export(rows)
+        click = lambda x, y: teach.view_at(tree, "p", x, y)
+        prof, warnings = teach.make_profile(d, {"sent": click(500, 190), "received": click(500, 440), "time": None,
+                                                "picture": None, "author": click(200, 130)})
+        self.assertEqual(prof["message_ids"], [])
+        self.assertEqual(prof["message_parent_ids"], ["accessories_view"])
+        self.assertTrue(prof.get("single_column"))
+        self.assertNotIn("direction_rules", prof)                 # one column: no direction is claimed
+        self.assertEqual(prof["author_ids"], ["author_name"])
+        self.assertTrue(any("one column" in w for w in warnings))
+
+
 class ReportTextTests(unittest.TestCase):
     def test_characters_the_font_lacks_are_written_as_codes(self):
         try:

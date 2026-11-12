@@ -149,7 +149,40 @@ run that was stopped, screenshots that came back black, a list whose end was not
   Use the script from KDL 0.5.0 or later: it was run on an AppWalk export and found the noted hash,
   and a wrong hash gave a WARNING.
 - **Document something else** goes back to step 2 for another app or another list on the same phone.
+- **Teach this app** makes a profile for an app that has none, or replaces one; see below.
 - **Close AppWalk**, at the bottom right, closes the window.
+
+## Teach AppWalk an app
+
+Without a profile, the transcript gives every line of an app as plain text: no sent or received,
+no times picked out, no pictures named. **Teach this app** on the Result step makes a profile from
+the export you just made.
+
+![Teaching AppWalk an app](img/teach.png)
+
+The screenshots of the export are on the left; use the arrows to find one that shows what is asked
+for. Click on:
+
+1. a message you know was sent from this phone,
+2. a message you know was received,
+3. a time shown with a message,
+4. a picture or other attachment, if the app shows one,
+5. the name of who wrote a message, if the app shows names.
+
+Each click is boxed on the screenshot, and the list on the right says which view was there and on
+which side. **Skip this one** when there is nothing like it; **Back** undoes the last click. Then the
+window says, in plain words, what the profile will do, with any warning: for example, that the sent
+and the received message are on the same side, so the app shows one column and nothing will be
+called sent or received.
+
+**Save and make the report again** saves the profile and makes the transcript and the report of this
+export again with it. The Result step then says how many messages were found, and how many sent and
+received. Later exports of the same app use it too.
+
+Only the views you click are used. AppWalk does not read what the messages say to make the profile.
+Profiles you teach are kept on this computer, in `.appwalk/profiles` in your home folder, and are used
+before the ones that come with AppWalk. Check the first report made with a new profile against its
+screenshots.
 
 ## What is in the folder
 

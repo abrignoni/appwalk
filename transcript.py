@@ -154,13 +154,21 @@ def join(merged, frame, reveal):
     return frame[:best] + merged, best_shared
 
 
+USER_PROFILES = os.path.join(os.path.expanduser("~"), ".appwalk", "profiles")
+
+
 def load_profile(package, folder=None):
-    folder = folder or os.path.join(os.path.dirname(os.path.abspath(__file__)), "profiles")
-    p = os.path.join(folder, package + ".json")
-    if not os.path.exists(p):
-        return None
-    with open(p, encoding="utf-8") as f:
-        return json.load(f)
+    """The profile for package: from folder if one is given; otherwise a taught one in ~/.appwalk/profiles,
+    then the one that ships with AppWalk. The file it came from is kept in "_from"."""
+    folders = [folder] if folder else [USER_PROFILES, os.path.join(os.path.dirname(os.path.abspath(__file__)), "profiles")]
+    for d in folders:
+        p = os.path.join(d, package + ".json")
+        if os.path.exists(p):
+            with open(p, encoding="utf-8") as f:
+                prof = json.load(f)
+            prof["_from"] = "taught on this computer" if os.path.abspath(d) == os.path.abspath(USER_PROFILES) else "shipped with AppWalk"
+            return prof
+    return None
 
 
 def classify(line, profile):
@@ -308,7 +316,7 @@ def build(export, profile_folder=None):
         notes.insert(0, "This app shows every message in one column, whoever wrote it, so its lines are placed on the "
                         "left and the side column does not say where they sat. Who wrote a line is the bold author line before it.")
     if profile:
-        notes.insert(0, f"Profile for {package} used (checked with {profile.get('checked_with', 'version not stated')}; "
+        notes.insert(0, f"Profile for {package} used, {profile.get('_from', 'from the folder given')} (checked with {profile.get('checked_with', 'version not stated')}; "
                         f"this export is version {manifest['apps_under_test'][0].get('version_name_at_add')}).")
     else:
         notes.insert(0, f"No profile for {package}: lines are not sorted into messages and other text, and no direction is given.")

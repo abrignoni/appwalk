@@ -352,6 +352,8 @@ class App:
         ttk.Button(buttons, text="Open folder", command=self.open_folder).pack(side="left", padx=8)
         self.verify_btn = ttk.Button(buttons, text="Check this export", command=self.verify_now)
         self.verify_btn.pack(side="left")
+        self.teach_btn = ttk.Button(buttons, text="Teach AppWalk this app", command=self.teach)
+        self.teach_btn.pack(side="left", padx=8)
         ttk.Button(buttons, text="Document something else", command=lambda: self.show(1)).pack(side="right")
         return page
 
@@ -809,6 +811,22 @@ class App:
     def copy_hash(self):
         self.root.clipboard_clear()
         self.root.clipboard_append(self.hash_value.get())
+
+    def teach(self):
+        """Opens the Teach dialog for this export: a profile from a few clicks, then the transcript and the
+        report made again with it."""
+        if not self.export:
+            return
+        import teach_gui
+        self.teach_win = teach_gui.TeachDialog(self.root, self.export, theme=self.theme, on_saved=self.on_taught)
+
+    def on_taught(self, text):
+        self.result_text.configure(state="normal")
+        self.result_text.insert("end", "\n" + text + "\n")
+        self.result_text.see("end")
+        self.result_text.configure(state="disabled")
+        self.open_btn.configure(state="normal" if os.path.exists(os.path.join(self.export, "transcript.html")) else "disabled")
+        self.report_btn.configure(state="normal" if os.path.exists(os.path.join(self.export, "report.pdf")) else "disabled")
 
     def verify_now(self):
         if not self.export:

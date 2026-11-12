@@ -167,6 +167,74 @@ def scenario_g():
 
 
 
+TEACH_FROM = os.environ.get("APPWALK_TEACH_EXPORT")   # an export of the emulator's Google Messages (made-up texts)
+
+
+def scenario_t():
+    """T: teach the app from the Result page, by clicks on a copy of an earlier export, into a test folder."""
+    if not TEACH_FROM:
+        note("T: teach skipped (APPWALK_TEACH_EXPORT not set)", True)
+        return
+    import shutil
+    import teach
+    import transcript
+    copy = os.path.join(out, "teach_" + os.path.basename(os.path.normpath(TEACH_FROM)))
+    if os.path.exists(copy):
+        shutil.rmtree(copy)
+    shutil.copytree(TEACH_FROM, copy)
+    folder = os.path.join(out, "taught_profiles")   # never the examiner's own ~/.appwalk/profiles
+    teach.USER_PROFILES = transcript.USER_PROFILES = folder
+    app.export = copy
+    if DOC and app.theme != "light":
+        app.switch_theme()   # the guide's pictures are all in the light theme
+    app.show(3)
+    app.teach_btn.invoke()
+    dlg = app.teach_win
+    yield lambda: dlg.win.winfo_exists()
+    pkg = teach.package_of(copy)["package"]
+
+    def find(want):
+        # Where a person would click: the middle of a sent bubble, then of a received one.
+        for i, (step, png, tree) in enumerate(dlg.shots):
+            root = transcript.ET.parse(tree).getroot()
+            node, cb = transcript.container(root, pkg)
+            for n in (node.iter("node") if node is not None else []):
+                b, d = transcript.box(n), n.get("content-desc") or ""
+                if transcript.short_id(n.get("resource-id") or "") == "message_text" and b and want(d):
+                    return i, ((b[0] + b[2]) // 2, (b[1] + b[3]) // 2)
+        return None, None
+    i, xy = find(lambda d: d.startswith("You said"))
+    dlg.show_shot(i)
+    dlg.pick(*xy)
+    i, xy = find(lambda d: " said " in d and not d.startswith("You"))
+    dlg.show_shot(i)
+    note("T: a click names the view under it", dlg.pick(*xy) is not None and dlg.answers["sent"]["rid"] == "message_text")
+    note("T: a click outside the list is refused and uses up no step", dlg.pick(2, 2) is None and dlg.step == 2)
+    for _ in range(3):
+        dlg.skip()
+    picture("12_teach", dlg.win)
+    prof = dlg.profile
+    note("T: the profile from the clicks", prof.get("message_ids") == ["message_text"]
+         and {r["value"]: r["direction"] for r in prof.get("direction_rules", [])} == {"right": "sent", "left": "received"},
+         "; ".join(teach.describe(prof)))
+    dlg.save_btn.invoke()
+    yield lambda: not dlg.win.winfo_exists()
+    saved = os.path.join(folder, pkg + ".json")
+    rows, notes, _ = transcript.build(copy)
+    note("T: saved in the test folder and used for the transcript", os.path.exists(saved) and "taught on this computer" in notes[0])
+    note("T: the result page says what was made", "Profile saved" in app.result_text.get("1.0", "end"),
+         dlg.result.replace(home_dir(), "~"))
+
+
+def home_dir():
+    return os.path.expanduser("~")
+
+
+def teach_only():
+    note("window opened", True)
+    yield from scenario_t()
+
+
 def quick():
     """Only the first two steps and scenario G, for a short rerun."""
     app.refresh_devices()
@@ -347,6 +415,7 @@ def script():
     note("F: the choice of theme is remembered", json.load(open(appwalk_gui.SETTINGS, encoding="utf-8")).get("theme") == app.theme)
     saved = json.load(open(appwalk_gui.SETTINGS, encoding="utf-8"))
     note("settings remembered, without the case reference", saved.get("examiner") == "Test Examiner" and "reference" not in saved)
+    yield from scenario_t()
 
 
 started = {"t": 0.0}
@@ -361,7 +430,7 @@ def wait_s(seconds):
     return False
 
 
-gen = {"quick": quick, "rows": rows_only}.get(os.environ.get("APPWALK_DRIVE"), script)()
+gen = {"quick": quick, "rows": rows_only, "teach": teach_only}.get(os.environ.get("APPWALK_DRIVE"), script)()
 waiting = [None]
 
 

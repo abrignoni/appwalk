@@ -358,6 +358,8 @@ if ctk is not None:
             self.ghost(buttons, "Open folder", self.open_folder).pack(side="left")
             self.verify_btn = self.ghost(buttons, "Check this export", self.verify_now)
             self.verify_btn.pack(side="left", padx=8)
+            self.teach_btn = self.ghost(buttons, "Teach this app", self.teach)
+            self.teach_btn.pack(side="left")
             self.ghost(buttons, "Document something else", lambda: self.show(1)).pack(side="right")
             return page
 

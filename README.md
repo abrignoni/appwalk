@@ -90,11 +90,11 @@ It needs a Python whose Tk is 8.6; on macOS the python.org 3.14 build has Tk 9, 
 refuses to start there.
 
 Driven through its own controls against an Android 15 emulator (`devtools/drive_gui.py`), 12 November
-2026: 31 of 31 checks with the CustomTkinter window on macOS (Python 3.12, CustomTkinter 5.2.2), Ubuntu
-26.04 (Python 3.14) and Windows 11 (Python 3.11), the last two on ARM64 with CustomTkinter 6.0.0. Also 31
-of 31 on macOS with CustomTkinter 6.0.0 before the last change (where dialogs open), and with the plain
-window. The checks cover each step, Pause, Stop, the lock dialog with a typed code, the question about a
-different app, the PDF report, Check this export, Copy, and the theme switch.
+2026: 36 of 36 checks with the CustomTkinter window on macOS (Python 3.12, CustomTkinter 5.2.2), Ubuntu
+26.04 (Python 3.14) and Windows 11 (Python 3.11), the last two on ARM64 with CustomTkinter 6.0.0, and
+the 6 checks of the teach step with the plain window on macOS. The checks cover each step, Pause, Stop,
+the lock dialog with a typed code, the question about a different app, the PDF report, Check this
+export, Copy, the theme switch, and teaching a profile by clicks.
 
 Needs Python 3 and adb. Pillow, ReportLab and CustomTkinter are optional; [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 says what each adds and what happens without it.
@@ -175,6 +175,15 @@ emulator) and for WhatsApp, Signal and Discord (made on 12 November 2026 from on
 a Pixel 7a, from the view ids and their counts; not checked line by line against the pictures). Each
 says which version it was checked with. An app can change its ids or layout at any time, so check a
 profile's output against the pictures.
+
+A profile can also be taught in the window: **Teach this app** on the Result step shows the export's
+screenshots, and the examiner clicks a sent message, a received one, a time, and if there are any, a
+picture and an author name (`teach.py`, `teach_gui.py`). For each click the view under it in that
+screenshot's view tree gives the id, the bubble around it and its side. Profiles taught this way are
+saved in `~/.appwalk/profiles/` and are used before the ones in `profiles/`. On the emulator, a profile
+taught with two clicks gave the same sent and received for all 229 Google Messages texts as the
+shipped profile; the 16 "Texting with" banner lines, which the shipped profile leaves out by their
+wording, came out as messages with no direction, since a click cannot teach a wording.
 
 What a profile can say, as JSON in `profiles/<package>.json`:
 
