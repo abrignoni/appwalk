@@ -240,6 +240,27 @@ def tree_rows(tree, package):
 Tree.rows = tree_rows
 
 
+def pixels_available():
+    try:
+        import PIL.Image  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def same_area(png_a, png_b, bounds):
+    """True when two screenshots are the same inside bounds (the list), or everywhere when bounds is None.
+    The status bar is left out on purpose: its clock and icons change while nothing in the app moves."""
+    from PIL import Image, ImageChops
+    a = Image.open(io.BytesIO(png_a)).convert("RGB")
+    b = Image.open(io.BytesIO(png_b)).convert("RGB")
+    if a.size != b.size:
+        return False
+    if bounds:
+        a, b = a.crop(tuple(bounds)), b.crop(tuple(bounds))
+    return ImageChops.difference(a, b).getbbox() is None
+
+
 def is_blank(png):
     """True when every sampled pixel is near black (a protected window or an empty frame), None when
     Pillow is missing and the frame could not be looked at."""
@@ -300,7 +321,7 @@ class Log:
 # ---- The walk ----
 
 class Walker:
-    def __init__(self, device, log, package, *, reveal="above", fraction=0.30, swipe_ms=1200, max_screens=200,
+    def __init__(self, device, log, package, *, reveal="above", fraction=0.70, swipe_ms=1200, max_screens=200,
                  stable_stops=2, settle_s=0.6, on_blocked="stop", ask=None, sleep=time.sleep, say=print,
                  rewind=True, max_rewind_scrolls=400):
         self.d, self.log, self.package = device, log, package
@@ -329,8 +350,13 @@ class Walker:
         return tree.front_package == self.package and not tree.secret_fields
 
     def settled_capture(self, capture=True):
-        """Tree, screenshot, tree. The screenshot is kept with the tree only when the tree was the same
-        before and after it; up to three tries. With capture off, one tree and no screenshot."""
+        """A screenshot and the view tree of the same moment; up to three tries. With Pillow: screenshot,
+        tree, screenshot, and the moment is settled when the list's area is the same in both pictures (one
+        tree read instead of two: on a Pixel 7a a tree read took about 2.3 s and a screenshot 0.3 s).
+        Without Pillow: tree, screenshot, tree, settled when the two trees agree. With capture off, one tree
+        and no screenshot."""
+        if capture and pixels_available():
+            return self.settled_capture_by_pixels()
         for attempt in range(1, 4):
             before = Tree(self.d.tree_raw())
             if not self.in_front(before):
@@ -343,6 +369,22 @@ class Walker:
             if not self.in_front(after):
                 return after, None, None, attempt
             if before.fingerprint(self.package) == after.fingerprint(self.package):
+                return after, png, stamp, attempt
+            self.sleep(self.settle_s)
+        self.summary["unsettled"] += 1
+        return after, png, stamp, -1
+
+    def settled_capture_by_pixels(self):
+        after = png = stamp = None
+        for attempt in range(1, 4):
+            stamp = self.d.stamp()
+            png = self.d.screenshot()
+            after = Tree(self.d.tree_raw())
+            if not self.in_front(after):
+                return after, None, None, attempt
+            again = self.d.screenshot()
+            box = after.scroll_container(self.package)
+            if same_area(png, again, box["bounds"] if box else None):
                 return after, png, stamp, attempt
             self.sleep(self.settle_s)
         self.summary["unsettled"] += 1
@@ -539,11 +581,18 @@ class Walker:
         l, t, r, b = box["bounds"]
         h = b - t
         x = (l + r) // 2
-        # Swipes stay in the middle of the list: one that starts near the bottom bar was ignored by the phone.
-        dist = int(h * min(fraction, 0.40))
-        y_top = t + int(h * 0.30)
         down = (self.reveal == "above") != reverse  # finger moves down to bring earlier content into view
-        y1, y2 = (y_top, y_top + dist) if down else (y_top + dist, y_top)
+        if fraction <= 0.40:
+            # Short moves stay in the middle of the list: one that started near the bottom bar was ignored.
+            dist = int(h * fraction)
+            y_top = t + int(h * 0.30)
+            y1, y2 = (y_top, y_top + dist) if down else (y_top + dist, y_top)
+        else:
+            # Long moves use most of the list's height, with a margin of 12% at each end so the finger never
+            # starts on a toolbar or the bottom bar.
+            dist = int(h * min(fraction, 0.76))
+            lo, hi = t + int(h * 0.12), b - int(h * 0.12)
+            y1, y2 = (lo, lo + dist) if down else (hi, hi - dist)
         ms = ms or self.swipe_ms
         self.d.swipe(x, y1, x, y2, ms)
         if phase == "walk":
@@ -791,6 +840,16 @@ def write_export(log, device, package, app_version, summary, args_used):
         manifest["transcript_notes"] = notes
     except Exception as e:  # a reading aid must never cost the export
         manifest["transcript_notes"] = [f"transcript not written: {type(e).__name__}: {e}"]
+    try:
+        import report_pdf
+        report_pdf.build(out)
+        manifest["report_note"] = "report.pdf written; its SHA-256 is in report.pdf.sha256"
+    except ImportError as e:
+        # Name the package to install, which is not always the name imported (PIL comes from Pillow).
+        package = {"PIL": "Pillow", "reportlab": "ReportLab"}.get((e.name or "").split(".")[0], e.name or "a module")
+        manifest["report_note"] = f"report.pdf not written: {package} is not installed (pip install {package.lower()})"
+    except Exception as e:  # nor may the report
+        manifest["report_note"] = f"report.pdf not written: {type(e).__name__}: {e}"
     return manifest
 
 
@@ -885,7 +944,7 @@ def app_in_front(serial, adb="adb"):
     return m.group(1) if m else None
 
 
-def run_job(serial, package, out, scenario, device_label, mode="screen", reveal="above", rewind=True, fraction=0.30,
+def run_job(serial, package, out, scenario, device_label, mode="screen", reveal="above", rewind=True, fraction=0.70,
             swipe_ms=1200, max_screens=200, item_reveal="above", capture_list=True, choose=None, ask=None, say=print,
             on_screenshot=None, should_stop=None, pause_gate=None, case=None):
     """One whole run, for the command line and the window alike. mode is "screen" (walk what is open) or
@@ -954,6 +1013,8 @@ def run_job(serial, package, out, scenario, device_label, mode="screen", reveal=
     manifest = write_export(log, dev, package, walker.app_version, summary, params)
     lines.append(f"Latest row hash (note it somewhere else): {manifest['hash_chain']['last_row_hash']}")
     lines += ["Transcript: " + n for n in manifest.get("transcript_notes", [])]
+    if manifest.get("report_note"):
+        lines.append("Report: " + manifest["report_note"])
     if not ok:
         lines.append("WARNING: this run is not complete or not confirmed. Read the stop reasons and the log.")
     return {"export": export, "ok": ok, "lines": lines, "summary": summary, "manifest": manifest}
@@ -968,7 +1029,7 @@ def main(argv=None):
     common.add_argument("--out", required=True, help="folder to create the export in")
     common.add_argument("--scenario", required=True)
     common.add_argument("--device-label", required=True)
-    common.add_argument("--fraction", type=float, default=0.30, help="scroll distance as a part of the list height (default 0.30)")
+    common.add_argument("--fraction", type=float, default=0.70, help="scroll distance as a part of the list height (default 0.70; 0.30 is the cautious setting)")
     common.add_argument("--swipe-ms", type=int, default=1200)
     common.add_argument("--max-screens", type=int, default=200, help="cap on screenshots per walk")
     common.add_argument("--on-blocked", choices=["stop", "ask"], default="stop", help="what to do when a lock, a password prompt or another app is in front")
@@ -985,6 +1046,8 @@ def main(argv=None):
     v.add_argument("export")
     tr = sub.add_parser("transcript", help="write transcript.csv and transcript.html again for an export")
     tr.add_argument("export")
+    rp = sub.add_parser("report", help="write report.pdf for an export (needs ReportLab)")
+    rp.add_argument("export")
     a = ap.parse_args(argv)
 
     if a.cmd == "verify":
@@ -992,6 +1055,12 @@ def main(argv=None):
         for name, result, ok in res:
             print(("ok      " if ok else "WARNING ") + f"{name}: {result}")
         return 0 if all(ok for _, _, ok in res) else 1
+
+    if a.cmd == "report":
+        import report_pdf
+        path, digest = report_pdf.build(a.export)
+        print(f"wrote {path}\nsha256 {digest}")
+        return 0
 
     if a.cmd == "transcript":
         import transcript

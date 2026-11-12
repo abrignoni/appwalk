@@ -385,6 +385,26 @@ class TranscriptTests(unittest.TestCase):
         self.assertEqual(shared, 0)
         self.assertEqual([x["text"] for x in merged], ["m0", "m1", "m2", "m5", "m6", "m7", "m8"])
 
+    def test_a_line_that_changed_between_frames_still_joins_once(self):
+        import transcript
+        mk = lambda items: [{"text": x, "rid": r, "desc": "", "bounds": (0, i, 9, i + 1), "side": "left"}
+                            for i, (x, r) in enumerate(items)]
+        held = mk([("2 min", "t"), ("m5", "x"), ("4 min", "t"), ("m6", "x"), ("m7", "x")])
+        # The next frame up shows m3 and m4, then the top of what is held, where "2 min" now reads "3 min".
+        new = mk([("m3", "x"), ("1 min", "t"), ("m4", "x"), ("3 min", "t"), ("m5", "x"), ("4 min", "t")])
+        merged, shared = transcript.join(list(held), new, "above")
+        self.assertGreater(shared, 0)
+        self.assertEqual([x["text"] for x in merged], ["m3", "1 min", "m4", "2 min", "m5", "4 min", "m6", "m7"])
+
+    def test_a_line_cut_off_at_the_edge_does_not_break_the_join(self):
+        import transcript
+        mk = lambda texts: [{"text": x, "rid": "x", "desc": "", "bounds": (0, i, 9, i + 1), "side": "left"} for i, x in enumerate(texts)]
+        held = mk(["m5", "m6", "m7"])
+        new = mk(["m3", "m4", "m5", "m6", "half-visible line"])
+        merged, shared = transcript.join(list(held), new, "above")
+        self.assertEqual(shared, 2)
+        self.assertEqual([x["text"] for x in merged], ["m3", "m4", "m5", "m6", "m7"])
+
     def test_repeated_identical_messages_keep_their_count(self):
         import transcript
         mk = lambda texts: [{"text": t, "rid": "x", "desc": "", "bounds": (0, i, 9, i + 1), "side": "left"} for i, t in enumerate(texts)]

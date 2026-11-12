@@ -73,11 +73,15 @@ It has four steps:
    examiner. If the app in front is no longer the one chosen when Start is pressed, it asks which one
    is meant.
 4. **Result.** What was captured, in sentences, with anything to look at in a warning colour. Buttons
-   open the transcript and the folder, check the export, and copy the latest row hash.
+   open the PDF report, the transcript and the folder, check the export, and copy the latest row hash.
+   Next becomes Close AppWalk here.
 
 Light and dark themes: it starts in the system's setting on macOS and Windows, and the Light or Dark
 button in the header switches. Examiner, phone label, folder and theme are remembered in
 `~/.appwalk/settings.json`; the case reference and note are not.
+
+The window is drawn with CustomTkinter when it is installed (`pip install customtkinter`). Without it,
+the plain Tk window in `appwalk_gui_classic.py` opens instead; both run the same code underneath.
 
 Every run from the window or the command line now also logs the phone's state before and after it,
 and a pause as its own row.
@@ -85,20 +89,27 @@ and a pause as its own row.
 It needs a Python whose Tk is 8.6; on macOS the python.org 3.14 build has Tk 9, and the window
 refuses to start there.
 
-Driven through its own controls against an Android 15 emulator (`devtools/drive_gui.py`): 29 checks on
-macOS, and on Ubuntu 26.04 and Windows 11 (both ARM64) 25 checks before the last addition and the 6
-checks of the short run after it. The checks cover each step, Pause, Stop, the lock dialog with a typed
-code, the question about a different app, Check this export, Copy, and the theme switch.
+Driven through its own controls against an Android 15 emulator (`devtools/drive_gui.py`), 12 November
+2026: 31 of 31 checks with the CustomTkinter window on macOS (Python 3.12, CustomTkinter 5.2.2), Ubuntu
+26.04 (Python 3.14) and Windows 11 (Python 3.11), the last two on ARM64 with CustomTkinter 6.0.0. Also 31
+of 31 on macOS with CustomTkinter 6.0.0 before the last change (where dialogs open), and with the plain
+window. The checks cover each step, Pause, Stop, the lock dialog with a typed code, the question about a
+different app, the PDF report, Check this export, Copy, and the theme switch.
 
-Needs Python 3 and adb. Pillow is optional: with it, a black frame is recorded as `blank`.
+Needs Python 3 and adb. Pillow, ReportLab and CustomTkinter are optional; [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+says what each adds and what happens without it.
 
 What a walk does:
 
 1. Scrolls to the far end of the list without taking screenshots, because an app can reopen a list
    wherever it was left. `--no-rewind` skips this.
-2. At each step: reads the view tree, takes a screenshot, reads the view tree again. The screenshot
-   is kept as settled only when the tree was the same before and after it.
-3. Scrolls a part of the list height (`--fraction`, default 0.30), so consecutive frames overlap.
+2. At each step: takes a screenshot, reads the view tree, takes a second screenshot. The first is
+   kept as settled only when the list's area is the same in both pictures. Without Pillow it reads the
+   tree twice around one screenshot and compares the trees instead. The first way was chosen because
+   on a Pixel 7a a tree read took about 2.3 s and a screenshot 0.3 s; how much time it saves per step
+   on that phone is not measured yet.
+3. Scrolls about 70% of the list height (`--fraction`, default 0.70), so each screenshot is mostly new
+   and consecutive frames still overlap. 0.30 is the cautious setting.
    If a frame shares nothing with the one before, it logs a gap, goes back and comes forward in
    smaller moves.
 4. Stops when two scrolls in a row change nothing, at `--max-screens`, or when blocked.
@@ -120,6 +131,10 @@ A folder in the known-data logger (KDL) export format, `kdl_<scenario>_<device>_
 - `text_index.csv`: the text of every labelled item in every tree, for searching.
 - `actions.csv` and `manifest.json`.
 
+- `report.pdf`, with `report.pdf.sha256` beside it: the case details, each conversation's text with
+  every line linked to its screenshot (S-numbers), the screenshots six to a page, and the result of
+  the export check. Needs ReportLab. Like the transcript, it is made from the saved files and is not
+  in the hash chain.
 - `transcript.html` and `transcript.csv`: the text of each walked screen in reading order, each line
   once, beside the screenshot it was first seen on. See "Transcript" below.
 
@@ -184,7 +199,11 @@ tree, and no bubble was found that ALEAPP did not report.
 
 `walk-list`, same emulator, 16 conversations and 227 texts: with every row chosen, 16 rows were
 found, opened and walked (86 screenshots, about 17 minutes), and all 227 messages ALEAPP reported
-were found under the row of the same name. With two rows chosen by title, those two became read and
+were found under the row of the same name. Again on 12 November with the 0.70 default and the
+screenshot comparison: 66 screenshots in 786 s (was 86 in 1,044 s), all 227 found, no NOT JOINED
+line, and every conversation's messages in the transcript the same, in the same order and direction, as in
+the 11 November run. The new run also has two texts that are in neither ALEAPP's output for that
+extraction nor the 11 November run. With two rows chosen by title, those two became read and
 the other 13 unread conversations stayed unread. With `--skip-list-capture` and one row chosen, no
 file of the export named any other conversation.
 

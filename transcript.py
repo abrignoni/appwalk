@@ -95,20 +95,32 @@ def key(line):
 
 
 def join(merged, frame, reveal):
-    """Adds one frame to the sequence. The frame overlaps the end it grows from; the longest run they
-    share is the join. Returns (new sequence, number of shared lines)."""
+    """Adds one frame to the sequence. Returns (new sequence, number of shared lines).
+
+    The new frame overlaps the end the sequence grows from. Lines can change between two screenshots
+    (a relative time such as "2 min" becomes "3 min"), and a line cut off at the frame's edge can be in
+    one frame and not the other, so the overlap is found by alignment, not by an exact match: the
+    longest run of lines the two share, starting near the edge they meet at. Lines in the overlap that
+    changed keep the version already held."""
     if not merged:
         return list(frame), None
+    if reveal != "above":
+        out, shared = join(list(reversed(merged)), list(reversed(frame)), "above")
+        return list(reversed(out)), shared
+    # Reveal above: the new frame shows earlier lines, then the top of what is already held. Try every place
+    # the held sequence could start in the frame; score each by lines that agree minus lines that do not,
+    # position by position. A changed line or one cut off at the edge costs one point instead of the join.
     a, b = [key(x) for x in merged], [key(x) for x in frame]
-    if reveal == "above":   # each new frame shows earlier lines, then the top of what is already held
-        for k in range(min(len(a), len(b)), 0, -1):
-            if b[-k:] == a[:k]:
-                return frame[:-k] + merged, k
+    best, best_score, best_shared = None, 0, 0
+    for d in range(len(b)):
+        n = min(len(b) - d, len(a))
+        agree = sum(1 for i in range(n) if b[d + i] == a[i])
+        score = agree - (n - agree)
+        if agree and score > best_score:
+            best, best_score, best_shared = d, score, agree
+    if best is None:
         return frame + merged, 0
-    for k in range(min(len(a), len(b)), 0, -1):
-        if a[-k:] == b[:k]:
-            return merged + frame[k:], k
-    return merged + frame, 0
+    return frame[:best] + merged, best_shared
 
 
 def load_profile(package, folder=None):

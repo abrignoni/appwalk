@@ -1,8 +1,9 @@
 # AppWalk quick start
 
-Draft for the first test on a real phone. Everything here was tried on an Android 15 emulator with
-made-up content, from macOS, Windows and Ubuntu. Nothing in it has been tried on a real phone yet.
-Mark what is wrong or missing as you go.
+Draft. Everything here was tried on an Android 15 emulator with made-up content, from macOS, Windows
+and Ubuntu. On a real phone, one Pixel 7a with Android 17, it was tried from macOS with WhatsApp and
+Signal, before the changes of 12 November (the new look, the 70% scroll, the PDF report). Mark what
+is wrong or missing as you go.
 
 ## What AppWalk is
 
@@ -29,6 +30,14 @@ Take your extraction first if you plan one. Then use AppWalk.
 
 - A computer with Python and `adb` (Android platform tools). On a Mac, use Python 3.12: the window
   refuses to start on the python.org 3.14 build, whose Tk has crashed windows like this one.
+- For the window and the report, three Python packages:
+
+  ```bash
+  python3.12 -m pip install customtkinter reportlab pillow
+  ```
+
+  Without CustomTkinter a plainer window opens that works the same way. Without ReportLab there is no
+  PDF report; everything else is written.
 - A USB cable.
 - On the phone: Developer options and USB debugging switched on. To get Developer options, open
   Settings, About phone, and tap Build number seven times. Some phones ask for a fingerprint or face
@@ -40,8 +49,8 @@ Take your extraction first if you plan one. Then use AppWalk.
 python3.12 appwalk_gui.py
 ```
 
-The window has four steps, shown across the top. The button in the corner switches between light and
-dark.
+The window has four steps, shown across the top. The Light and Dark switch in the corner changes the
+colours.
 
 ## Step 1: Phone
 
@@ -85,7 +94,7 @@ Options:
 
 ## Step 3: Run
 
-Press **Start**, then leave the phone alone.
+Press **Start**, then leave the phone alone until the Result page shows.
 
 If the app in front is no longer the one you chose, AppWalk asks which one you mean before it does
 anything.
@@ -98,7 +107,7 @@ document. Type in the box to narrow a long list. **Tick all shown** takes every 
 ![The row picker](img/rows.png)
 
 While it works, the window shows what it is documenting, how many screenshots it has, which row it is
-on and the time taken. The latest screenshot is on the right.
+on and the time taken. The latest screenshot fills the right half.
 
 ![A run in progress](img/run.png)
 
@@ -124,6 +133,10 @@ The headline is green when everything was captured and each list was confirmed f
 orange when there is something to look at, and the lines below say what: a row that would not open, a
 run that was stopped, screenshots that came back black, a list whose end was not confirmed.
 
+- **Open report** opens `report.pdf`: the case details, then the text of each conversation, then the
+  screenshots six to a page. Each line of text ends in an S-number, such as S12; click it to go to
+  that screenshot. A picture that came back the same twice (as at the end of a short conversation) is
+  printed once, with both S-numbers.
 - **Open transcript** opens a page with the text of each conversation in reading order, each line
   beside the screenshot it was first seen on.
 - **Open folder** opens the folder with everything in it.
@@ -135,6 +148,7 @@ run that was stopped, screenshots that came back black, a list whose end was not
   Use the script from KDL 0.5.0 or later: it was run on an AppWalk export and found the noted hash,
   and a wrong hash gave a WARNING.
 - **Document something else** goes back to step 2 for another app or another list on the same phone.
+- **Close AppWalk**, at the bottom right, closes the window.
 
 ## What is in the folder
 
@@ -142,6 +156,7 @@ A folder named `kdl_<reference>_<phone label>_<time>` with:
 
 - `screens/`: the screenshots.
 - `trees/`: for each screenshot, the text and layout the app reported for that screen.
+- `report.pdf` and `report.pdf.sha256`: the report, and its own hash.
 - `transcript.html` and `transcript.csv`: the text in reading order.
 - `actions.jsonl` and `actions.csv`: the log. One row for everything AppWalk did: each scroll, each
   screenshot with the hash of its picture, each row opened, each wait, the phone's state before and
@@ -153,7 +168,7 @@ therefore covers every row and every picture.
 
 ## Reading the transcript
 
-The transcript is a reading aid. The screenshots are the record of what was on the screen. The text
+The transcript and the report are reading aids, made from the saved files. The screenshots are the record of what was on the screen. The text
 beside them is what the app reported, which is usually the same and is not guaranteed to be.
 
 - Left and right are where a line sat on the screen.

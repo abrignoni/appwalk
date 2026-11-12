@@ -34,18 +34,43 @@ os.makedirs(out, exist_ok=True)
 if shots:
     os.makedirs(shots, exist_ok=True)
 appwalk_gui.SETTINGS = os.path.join(out, "settings.json")   # never the real one
+appwalk_gui.classic.SETTINGS = appwalk_gui.SETTINGS   # the plain window reads its own copy of the name
 DOC = os.environ.get("APPWALK_DOC_PICTURES")   # pictures for the guide: light theme, and no real folder names in them
 if DOC:
     with open(appwalk_gui.SETTINGS, "w", encoding="utf-8") as f:
         json.dump({"theme": "light"}, f)
-root = tk.Tk()
-app = appwalk_gui.App(root)
+CTK = getattr(appwalk_gui, "ctk", None) and os.environ.get("APPWALK_GUI") != "classic"
+root = appwalk_gui.ctk.CTk() if CTK else tk.Tk()
+app = (appwalk_gui.App if CTK else appwalk_gui.classic.App)(root)
+print("window:", "CustomTkinter" if CTK else "plain Tk", flush=True)
+
+
+def state(widget):
+    return str(widget.cget("state"))
 root.attributes("-topmost", True)
+root.geometry("+40+60")   # top left, so a picture of the window is never cut by the bottom of the screen
 report, deadline = [], [0]
 
 
 def adb(*args):
     return subprocess.run(["adb", "-s", serial, *args], stdin=subprocess.DEVNULL, capture_output=True, timeout=60).stdout.decode("utf-8", "replace")
+
+
+def run_loop(seconds):
+    """macOS draws a new window only while the event loop runs; a sleep is not enough."""
+    until = time.time() + seconds
+    while time.time() < until:
+        root.update()
+        time.sleep(0.02)
+
+
+def lift_for_picture(win):
+    """The driver keeps the main window on top of everything, so a dialog is lifted over it for its picture.
+    Wait first: a dialog drops its own brief on-top flag 400 ms after it opens."""
+    run_loop(0.8)
+    win.attributes("-topmost", True)
+    win.lift()
+    run_loop(0.3)
 
 
 def picture(name, widget=None):
@@ -73,6 +98,9 @@ def picture(name, widget=None):
                 box.insert("end", text)
                 box.configure(state="disabled")
             undo.append(put_back)
+    if widget is not None and widget is not root:
+        lift_for_picture(widget)
+        undo.append(lambda: widget.winfo_exists() and widget.attributes("-topmost", False))
     root.update()   # so the picture shows what was just set
     x, y, wd, ht = w.winfo_rootx(), w.winfo_rooty() - 28, w.winfo_width(), w.winfo_height() + 28
     subprocess.run(["screencapture", "-x", "-R", f"{x},{y},{wd},{ht}", os.path.join(shots, name + ".png")], stdin=subprocess.DEVNULL, capture_output=True)
@@ -109,16 +137,20 @@ OTHER_APP = "com.android.settings"
 
 
 def scenario_g():
-    # G: the app in front is changed after it was chosen; Start asks which one is meant
-    adb("shell", "am", "start", "-a", "android.settings.SETTINGS")
-    time.sleep(6)
+    # G: the app in front is changed after step 2 read it; Start asks which one is meant
     app.show(1)
+    note("G: step 2 reads the app in front again", app.package.get() == "com.google.android.apps.messaging", app.package.get())
     app.mode.set("screen")
     app.next_btn.invoke()
+    adb("shell", "am", "start", "-a", "android.settings.SETTINGS")
+    time.sleep(6)
     app.result = None
     app.start_btn.invoke()
     up = getattr(app, "front_win", None) is not None and app.front_win.winfo_exists()
     note("G: Start asks when a different app is in front", up and not app.running)
+    if not up and app.running:
+        app.stop_btn.invoke()
+        yield finished
     if up:
         picture("7b_other_app", app.front_win)
         app.front_cancel.invoke()
@@ -170,11 +202,11 @@ def rows_only():
     yield rows_dialog_up
     for t in list(app.row_vars)[1:3]:
         app.row_vars[t].set(True)
-    note("ticking rows turns Document these on", str(app.rows_ok["state"]) == "normal")
+    note("ticking rows turns Document these on", state(app.rows_ok) == "normal")
     picture("3_rows", app.rows_win)
     for t in list(app.row_vars):
         app.row_vars[t].set(False)
-    app.rows_ok.master.winfo_children()[-1].invoke()   # "None": nothing is walked
+    (app.rows_none if hasattr(app, "rows_none") else app.rows_ok.master.winfo_children()[-1]).invoke()   # "None": nothing is walked
     yield finished
 
 
@@ -210,7 +242,7 @@ def script():
     yield rows_dialog_up
     titles = list(app.row_vars)
     note("rows dialog lists the conversations", len(titles) >= 2, f"{len(titles)} rows")
-    note("Document these is off until a row is ticked", str(app.rows_ok["state"]) == "disabled")
+    note("Document these is off until a row is ticked", state(app.rows_ok) == "disabled")
     for t in titles[1:3]:           # two short threads
         app.row_vars[t].set(True)
     app.rows_win.update()
@@ -235,7 +267,10 @@ def script():
     note("case details are in the log", case.get("examiner") == "Test Examiner" and case.get("reference") == "GUI-CHECK-1")
     note("phone state logged before and after", acts.count("device_state") == 2)
     note("the pause is in the log", "paused_by_examiner" in acts)
-    note("transcript written", os.path.exists(os.path.join(a_export, "transcript.html")) and str(app.open_btn["state"]) == "normal")
+    note("transcript written", os.path.exists(os.path.join(a_export, "transcript.html")) and state(app.open_btn) == "normal")
+    note("report written and Open report on", os.path.exists(os.path.join(a_export, "report.pdf"))
+         and os.path.exists(os.path.join(a_export, "report.pdf.sha256")) and state(app.report_btn) == "normal"
+         and app.result["manifest"].get("report_note", "").startswith("report.pdf written"))
     app.verify_btn.invoke()
     note("E: Check this export", "Checks out" in app.result_text.get("1.0", "end"))
     app.copy_hash()
