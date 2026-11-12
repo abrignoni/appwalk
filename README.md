@@ -183,7 +183,11 @@ screenshot's view tree gives the id, the bubble around it and its side. Profiles
 saved in `~/.appwalk/profiles/` and are used before the ones in `profiles/`. On the emulator, a profile
 taught with two clicks gave the same sent and received for all 229 Google Messages texts as the
 shipped profile; the 16 "Texting with" banner lines, which the shipped profile leaves out by their
-wording, came out as messages with no direction, since a click cannot teach a wording.
+wording, came out as messages with no direction, since a click cannot teach a wording. On real
+exports from a Pixel 7a, with the clicks placed in code by view id and position, never by what a
+message says: Discord's taught profile was the same as the shipped one in every field, and WhatsApp's
+added only its bubble view; both gave the same role and direction on every line as the shipped one.
+`python3 appwalk.py teach <export folder>` opens the Teach window on an earlier export.
 
 What a profile can say, as JSON in `profiles/<package>.json`:
 

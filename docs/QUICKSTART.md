@@ -179,6 +179,8 @@ called sent or received.
 export again with it. The Result step then says how many messages were found, and how many sent and
 received. Later exports of the same app use it too.
 
+To teach from an earlier export, run `python3.12 appwalk.py teach <export folder>`.
+
 Only the views you click are used. AppWalk does not read what the messages say to make the profile.
 Profiles you teach are kept on this computer, in `.appwalk/profiles` in your home folder, and are used
 before the ones that come with AppWalk. Check the first report made with a new profile against its

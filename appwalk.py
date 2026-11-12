@@ -1068,6 +1068,8 @@ def main(argv=None):
     tr.add_argument("export")
     rp = sub.add_parser("report", help="write report.pdf for an export (needs ReportLab)")
     rp.add_argument("export")
+    tp = sub.add_parser("teach", help="open the Teach window on an export: a profile for its app from a few clicks")
+    tp.add_argument("export")
     a = ap.parse_args(argv)
 
     if a.cmd == "verify":
@@ -1075,6 +1077,17 @@ def main(argv=None):
         for name, result, ok in res:
             print(("ok      " if ok else "WARNING ") + f"{name}: {result}")
         return 0 if all(ok for _, _, ok in res) else 1
+
+    if a.cmd == "teach":
+        import tkinter as tk
+        import teach_gui
+        root = tk.Tk()
+        root.withdraw()
+        dlg = teach_gui.TeachDialog(root, a.export, on_saved=print)
+        dlg.win.protocol("WM_DELETE_WINDOW", root.destroy)
+        dlg.win.bind("<Destroy>", lambda e: e.widget is dlg.win and root.after(10, root.destroy))
+        root.mainloop()
+        return 0
 
     if a.cmd == "report":
         import report_pdf

@@ -28,7 +28,8 @@ class TeachDialog:
         c = self.c = COLOURS.get(theme, COLOURS["light"])
         win = self.win = tk.Toplevel(root, bg=c["bg"])
         win.title("Teach AppWalk this app")
-        win.transient(root)
+        if root.winfo_viewable():   # a dialog tied to a hidden window can stay hidden on macOS
+            win.transient(root)
         self.max_h = max(420, min(760, win.winfo_screenheight() - 220))
         left = tk.Frame(win, bg=c["bg"])
         left.pack(side="left", padx=16, pady=16)
