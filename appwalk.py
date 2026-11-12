@@ -258,6 +258,10 @@ def same_area(png_a, png_b, bounds):
         return False
     if bounds:
         a, b = a.crop(tuple(bounds)), b.crop(tuple(bounds))
+    # A scrollbar fades out about 2 s after a scroll (measured in Signal on a Pixel 7a) and would make every
+    # step look unsettled. The thin strip at the right edge where it sits is left out of the comparison.
+    edge = max(4, a.width * 15 // 1000)
+    a, b = a.crop((0, 0, a.width - edge, a.height)), b.crop((0, 0, b.width - edge, b.height))
     return ImageChops.difference(a, b).getbbox() is None
 
 
@@ -379,11 +383,27 @@ class Walker:
         for attempt in range(1, 4):
             stamp = self.d.stamp()
             png = self.d.screenshot()
+            # A list can still be gliding after the swipe. Screenshots are cheap and the tree read is not
+            # (on a Pixel 7a 0.3 s against 2.3 s), so wait until two quick screenshots in a row agree with
+            # the one before. One agreement was not enough in Signal: its floating date label changed about
+            # 0.4 s after the list stopped gliding.
+            agreed = 0
+            for _ in range(8):
+                quick_stamp = self.d.stamp()
+                quick = self.d.screenshot()
+                if same_area(png, quick, getattr(self, "last_list_bounds", None)):
+                    agreed += 1
+                    if agreed == 2:
+                        break
+                else:
+                    agreed = 0
+                    stamp, png = quick_stamp, quick
             after = Tree(self.d.tree_raw())
             if not self.in_front(after):
                 return after, None, None, attempt
             again = self.d.screenshot()
             box = after.scroll_container(self.package)
+            self.last_list_bounds = box["bounds"] if box else None
             if same_area(png, again, box["bounds"] if box else None):
                 return after, png, stamp, attempt
             self.sleep(self.settle_s)

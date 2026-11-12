@@ -106,8 +106,14 @@ What a walk does:
 2. At each step: takes a screenshot, reads the view tree, takes a second screenshot. The first is
    kept as settled only when the list's area is the same in both pictures. Without Pillow it reads the
    tree twice around one screenshot and compares the trees instead. The first way was chosen because
-   on a Pixel 7a a tree read took about 2.3 s and a screenshot 0.3 s; how much time it saves per step
-   on that phone is not measured yet.
+   on a Pixel 7a a tree read took about 2.3 s and a screenshot 0.3 s. Before the tree read it waits
+   until two quick screenshots in a row match, and a thin strip at the right edge, where a scrollbar
+   fades out about 2 s after a scroll, is left out of every comparison. On the Pixel 7a, one Signal
+   conversation took 175 s for 26 screenshots (6.7 s each), against 449 s for 60 screenshots (7.5 s
+   each) at 0.30 with the tree comparison.
+   At 0.70 in that conversation, 18 transcript lines were marked NOT JOINED: at those steps the part of
+   the screen two screenshots share held no text. Measured from the pictures, the list moved less than
+   its height at every step, so nothing was skipped; the transcript cannot see that yet.
 3. Scrolls about 70% of the list height (`--fraction`, default 0.70), so each screenshot is mostly new
    and consecutive frames still overlap. 0.30 is the cautious setting.
    If a frame shares nothing with the one before, it logs a gap, goes back and comes forward in
