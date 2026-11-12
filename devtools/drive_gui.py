@@ -34,6 +34,10 @@ os.makedirs(out, exist_ok=True)
 if shots:
     os.makedirs(shots, exist_ok=True)
 appwalk_gui.SETTINGS = os.path.join(out, "settings.json")   # never the real one
+DOC = os.environ.get("APPWALK_DOC_PICTURES")   # pictures for the guide: light theme, and no real folder names in them
+if DOC:
+    with open(appwalk_gui.SETTINGS, "w", encoding="utf-8") as f:
+        json.dump({"theme": "light"}, f)
 root = tk.Tk()
 app = appwalk_gui.App(root)
 root.attributes("-topmost", True)
@@ -48,9 +52,33 @@ def picture(name, widget=None):
     if not shots or sys.platform != "darwin":
         return
     w = widget or root
+    undo = []
+    if DOC:
+        # Only what the window shows is changed, for the moment of the picture; nothing that is saved.
+        home, shown = os.path.expanduser("~"), "/Users/examiner"
+        real = app.out.get()
+        app.out.set("/Users/examiner/Cases/2026-001")
+        undo.append(lambda: app.out.set(real))
+        box = app.result_text
+        text = box.get("1.0", "end-1c")
+        if out in text or home in text:
+            box.configure(state="normal")
+            box.delete("1.0", "end")
+            box.insert("end", text.replace(out, "/Users/examiner/Cases/2026-001").replace(home, shown))
+            box.configure(state="disabled")
+
+            def put_back():
+                box.configure(state="normal")
+                box.delete("1.0", "end")
+                box.insert("end", text)
+                box.configure(state="disabled")
+            undo.append(put_back)
     root.update()   # so the picture shows what was just set
     x, y, wd, ht = w.winfo_rootx(), w.winfo_rooty() - 28, w.winfo_width(), w.winfo_height() + 28
     subprocess.run(["screencapture", "-x", "-R", f"{x},{y},{wd},{ht}", os.path.join(shots, name + ".png")], stdin=subprocess.DEVNULL, capture_output=True)
+    for u in undo:
+        u()
+    root.update()
 
 
 def note(name, ok, detail=""):
@@ -126,6 +154,30 @@ def quick():
     yield from scenario_g()
 
 
+def rows_only():
+    """Steps 1 and 2, then the row picker with two rows ticked, for the guide's picture. Nothing is walked."""
+    app.refresh_devices()
+    app.device.set([n for n in app.device_box["values"] if n.split()[0] == serial][0])
+    app.read_facts()
+    app.examiner.set("Test Examiner")
+    app.reference.set("GUI-CHECK-1")
+    app.label.set("emuA15")
+    app.next_btn.invoke()
+    app.out.set(out)
+    app.mode.set("list")
+    app.next_btn.invoke()
+    app.start_btn.invoke()
+    yield rows_dialog_up
+    for t in list(app.row_vars)[1:3]:
+        app.row_vars[t].set(True)
+    note("ticking rows turns Document these on", str(app.rows_ok["state"]) == "normal")
+    picture("3_rows", app.rows_win)
+    for t in list(app.row_vars):
+        app.row_vars[t].set(False)
+    app.rows_ok.master.winfo_children()[-1].invoke()   # "None": nothing is walked
+    yield finished
+
+
 def script():
     # Step 1
     app.refresh_devices()
@@ -166,9 +218,10 @@ def script():
     app.rows_ok.configure(state="normal")
     app.rows_ok.invoke()
     yield lambda: app.shots >= 1 and getattr(app, "current_item", None)
+    picture("4_running")
     app.pause_btn.invoke()
     at = app.shots
-    picture("4_running")
+    picture("4b_paused")
     yield lambda: wait_s(14)
     note("Pause holds the run", app.shots <= at + 1 and app.running, f"screenshots {at} -> {app.shots}")
     app.pause_btn.invoke()
@@ -273,7 +326,7 @@ def wait_s(seconds):
     return False
 
 
-gen = quick() if os.environ.get("APPWALK_DRIVE") == "quick" else script()
+gen = {"quick": quick, "rows": rows_only}.get(os.environ.get("APPWALK_DRIVE"), script)()
 waiting = [None]
 
 

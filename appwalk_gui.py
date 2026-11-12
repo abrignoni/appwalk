@@ -137,6 +137,9 @@ class App:
         self.hint.pack(side="right", padx=14)
 
         self.pages = [self.page_phone(), self.page_choose(), self.page_run(), self.page_result()]
+        # A hint about a missing field goes away once the field is filled.
+        for v in (self.label, self.package, self.out):
+            v.trace_add("write", lambda *_: self.hint.configure(text=""))
         self.show(self.page)
         if self.serial():
             self.read_facts()
@@ -309,7 +312,7 @@ class App:
         self.result_text.tag_configure("warn", foreground=WARN)
         hash_row = tk.Frame(outer, bg=CARD)
         hash_row.pack(fill="x", padx=18, pady=(4, 0))
-        tk.Label(hash_row, text="Latest row hash. Write it somewhere else: it is what shows later that nothing was changed.",
+        tk.Label(hash_row, text="Latest row hash. Write it somewhere else. Checked later, it shows whether the log was changed or cut.",
                  font=self.f_small, bg=CARD, fg=MUTED, anchor="w").pack(fill="x")
         self.hash_value = tk.StringVar()
         ttk.Entry(hash_row, textvariable=self.hash_value, state="readonly", width=70).pack(side="left", pady=4)
@@ -679,6 +682,9 @@ class App:
         ttk.Button(buttons, text="None", command=lambda: close([])).pack(side="right", padx=6)
         win.protocol("WM_DELETE_WINDOW", lambda: close([]))
         self.rows_win = win
+        # The count and the button follow the boxes however they are ticked.
+        for v in self.row_vars.values():
+            v.trace_add("write", lambda *_: count())
         relist()
         count()
 

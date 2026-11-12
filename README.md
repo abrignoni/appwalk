@@ -13,6 +13,8 @@ examiner is allowed to examine. There are two ways to use it:
 
 Both write a log of everything the tool did.
 
+For a step-by-step guide to the window, see [docs/QUICKSTART.md](docs/QUICKSTART.md).
+
 It is for a device examined with the owner's consent or other lawful authority. It does not unlock
 anything, guess anything or get around any lock. When a lock screen, a password prompt or another
 app is in front, it stops. With `--on-blocked ask` it waits for the examiner, who can deal with it
