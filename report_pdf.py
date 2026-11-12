@@ -147,6 +147,8 @@ def build(export, out_name="report.pdf"):
               "Lines on the left sat on the left of the screen, lines on the right on the right. Grey centred lines span "
               "the screen, such as dates. Sent and received appear only for apps AppWalk has a profile for, with the "
               "basis for it.",
+              "A line in square brackets is the description the app gave an item with no text, such as a picture. "
+              "A bold line is the name of who wrote the lines after it, where the app shows one.",
               "Each line's tag, such as S12, names the screenshot it was first seen on. Click it to go to that screenshot.",
               "This report is made from the export's files and is not in its hash chain. Its own SHA-256 is in "
               "report.pdf.sha256 beside it. The export's latest row hash, on every page, covers every row and every file "
@@ -165,7 +167,11 @@ def build(export, out_name="report.pdf"):
             story.append(Paragraph(esc(item or "The screen that was open"), st["h"]))
         tag = f'<a href="#S{r["first_seen_step"]}" color="#5F6B7A">S{r["first_seen_step"]}</a>'
         label = " · ".join(x for x in (r["direction"], r["direction_basis"]) if x)
-        if r["role"] in ("time", "other") or r["side"] == "across":
+        if r["role"] == "described":
+            r = dict(r, text=f"[{r['text']}]")
+        if r["role"] == "author":
+            story.append(Paragraph(f"<b>{esc(r['text'])}</b> &nbsp;<font size='7'>{tag}</font>", st["left"]))
+        elif r["role"] in ("time", "other") or r["side"] == "across":
             story.append(Paragraph(f"{esc(r['text'])} &nbsp; {tag}", st["across"]))
         else:
             extra = f' <font size="7" color="#5F6B7A">· {esc(label)}</font>' if label else ""

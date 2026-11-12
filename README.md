@@ -169,9 +169,27 @@ So nobody has to type what the pictures show, each export gets a transcript made
 It does not say who sent a message unless there is a profile for the app in `profiles/`. A profile
 names the view ids of message text and time lines and how a sent message is marked. With one, each
 message gets `sent` or `received` and the basis: "the app's own description" or "side of the screen
-(inferred)". Profiles exist for Google Messages and Fossify Messages; each says which version it was
-checked with. An app can change its ids or layout at any time, so check a profile's output against
-the pictures.
+(inferred)". Profiles exist for Google Messages and Fossify Messages (checked against ALEAPP on the
+emulator) and for WhatsApp, Signal and Discord (made on 12 November 2026 from one conversation each on
+a Pixel 7a, from the view ids and their counts; not checked line by line against the pictures). Each
+says which version it was checked with. An app can change its ids or layout at any time, so check a
+profile's output against the pictures.
+
+What a profile can say, as JSON in `profiles/<package>.json`:
+
+- `message_ids`, `time_ids`, `ignore_ids`, `ignore_text_prefixes`: which views are messages, times, or
+  left out.
+- `message_parent_ids`: message text that has no view id of its own, known by its parent's id
+  (Discord).
+- `author_ids`: who wrote the lines after it, shown in bold (Discord).
+- `described_ids`: views with no text whose description goes into the transcript in square brackets,
+  such as a picture (`image` in WhatsApp and Discord, `image_view` in Signal). A named view inside
+  another named one is left out, so a picture is one line. Not every app's descriptions are worth
+  having: taking every described view would have added 215 lines of delivery ticks and thumbnails to
+  one Signal conversation, so a profile names the ones it wants.
+- `direction_rules`: how a sent message is told from a received one, by the app's description or the
+  side of the screen.
+- `single_column`: the app shows every message in one column, so lines are placed on the left.
 
 The transcript is a reading aid, made from the saved files, and can be made again with
 `python3 appwalk.py transcript <export folder>`. It is not in the hash chain. The screenshots are the

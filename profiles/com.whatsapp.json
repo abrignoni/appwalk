@@ -1,0 +1,11 @@
+{
+  "package": "com.whatsapp",
+  "checked_with": "2.26.44.90 on a Pixel 7a, Android 17, 12 November 2026, one conversation",
+  "message_ids": ["message_text"],
+  "time_ids": ["date"],
+  "described_ids": ["image"],
+  "direction_rules": [
+    {"by": "side", "value": "right", "direction": "sent"},
+    {"by": "side", "value": "left", "direction": "received"}
+  ]
+}

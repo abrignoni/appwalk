@@ -438,6 +438,30 @@ class TranscriptTests(unittest.TestCase):
         self.assertEqual(transcript.classify(line(rid="a:id/when"), prof)[0], "time")
         self.assertEqual(transcript.classify(line(rid="a:id/title"), prof)[0], "other")
 
+    def test_profile_authors_unnamed_messages_and_described_items(self):
+        import transcript
+        prof = {"message_ids": [], "message_parent_ids": ["accessories_view"], "author_ids": ["author_name"],
+                "described_ids": ["image"], "direction_rules": [{"by": "side", "value": "right", "direction": "sent"}]}
+        line = lambda **k: dict({"text": "t", "rid": "", "parent_rid": "a:id/accessories_view", "desc": "", "side": "left"}, **k)
+        self.assertEqual(transcript.classify(line(), prof)[0], "message")                       # no id, known by its parent
+        self.assertEqual(transcript.classify(line(parent_rid="a:id/embed"), prof)[0], "other")  # no id, other parent
+        self.assertEqual(transcript.classify(line(rid="a:id/author_name"), prof)[0], "author")
+        self.assertEqual(transcript.classify(line(rid="a:id/image", described=True, side="right"), prof),
+                         ("described", "sent", "side of the screen (inferred)"))
+        # A described view nested in another named one is one line; text always wins over a description.
+        tree = os.path.join(tempfile.mkdtemp(), "t.xml")
+        with open(tree, "w", encoding="utf-8") as f:
+            f.write('<?xml version="1.0"?><hierarchy><node class="androidx.recyclerview.widget.RecyclerView" package="p" '
+                    'resource-id="p:id/list" scrollable="true" bounds="[0,0][1000,2000]" text="" content-desc="">'
+                    '<node class="FrameLayout" package="p" resource-id="p:id/image" bounds="[600,100][950,500]" text="" content-desc="Photo">'
+                    '<node class="ImageView" package="p" resource-id="p:id/image" bounds="[600,100][950,500]" text="" content-desc="Photo"/></node>'
+                    '<node class="TextView" package="p" resource-id="p:id/msg" bounds="[50,600][500,650]" text="hello" content-desc="x"/>'
+                    '</node></hierarchy>')
+        got = transcript.frame_lines(tree, "p", {"described_ids": ["image"]})
+        self.assertEqual([(x["text"], x["described"]) for x in got], [("Photo", True), ("hello", False)])
+        self.assertEqual([x["text"] for x in transcript.frame_lines(tree, "p")], ["hello"])   # without a profile, as before
+        shutil.rmtree(os.path.dirname(tree))
+
     def test_list_mode_gives_one_section_per_opened_row(self):
         out = run_list(FakeChat(CHATS), select="ask", answer="2-3")[0]
         self.assertEqual([r["text"] for r in self.lines(out, "Bruno")], [f"Bruno msg {i:03d}" for i in range(1, 5)])

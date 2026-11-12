@@ -1,0 +1,10 @@
+{
+  "package": "com.discord",
+  "checked_with": "Discord 353.11 on a Pixel 7a, Android 17, 12 November 2026, one conversation",
+  "message_ids": [],
+  "message_parent_ids": ["accessories_view"],
+  "author_ids": ["author_name"],
+  "time_ids": ["timestamp"],
+  "described_ids": ["image"],
+  "single_column": true
+}

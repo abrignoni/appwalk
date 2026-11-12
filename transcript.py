@@ -70,22 +70,44 @@ def side_of(b, cb):
     return "left" if left_gap < right_gap else "right"
 
 
-def frame_lines(tree_path, package):
+def frame_lines(tree_path, package, profile=None):
     """Text nodes inside the scrolling list of one view tree, top to bottom. Nodes with no area are
-    left out: a web view lists text that is not on the screen with empty bounds."""
+    left out: a web view lists text that is not on the screen with empty bounds.
+
+    A profile can also name views that carry only a description (a picture, for example) in
+    described_ids. Each becomes a line whose text is that description, marked as described. A named
+    view inside another named one is left out, so a picture is one line however deeply it is nested."""
     root = ET.parse(tree_path).getroot()
     node, cb = container(root, package)
     if node is None:
         return []
+    described = set((profile or {}).get("described_ids", []))
+    parent = {ch: p for p in node.iter() for ch in p}
+    taken = set()
     out = []
     for n in node.iter("node"):
         b = box(n)
-        if n is node or n.get("package") != package or not n.get("text") or not b:
+        if n is node or n.get("package") != package or not b:
             continue
         if b[2] <= b[0] or b[3] <= b[1]:
             continue
-        out.append({"text": n.get("text"), "desc": n.get("content-desc") or "", "rid": n.get("resource-id") or "",
-                    "bounds": b, "side": side_of(b, cb)})
+        rid = n.get("resource-id") or ""
+        up = parent.get(n)
+        parent_rid = (up.get("resource-id") or "") if up is not None else ""
+        if n.get("text"):
+            out.append({"text": n.get("text"), "desc": n.get("content-desc") or "", "rid": rid, "parent_rid": parent_rid,
+                        "bounds": b, "side": side_of(b, cb), "described": False})
+        elif n.get("content-desc") and short_id(rid) in described:
+            q, nested = up, False
+            while q is not None:
+                if id(q) in taken:
+                    nested = True
+                    break
+                q = parent.get(q)
+            taken.add(id(n))
+            if not nested:
+                out.append({"text": n.get("content-desc"), "desc": n.get("content-desc"), "rid": rid, "parent_rid": parent_rid,
+                            "bounds": b, "side": side_of(b, cb), "described": True})
     out.sort(key=lambda x: (x["bounds"][1], x["bounds"][0]))
     return out
 
@@ -141,16 +163,21 @@ def classify(line, profile):
         return "time", "", ""
     if rid in profile.get("ignore_ids", []) or any(line["text"].startswith(p) for p in profile.get("ignore_text_prefixes", [])):
         return "other", "", ""
-    if rid not in profile.get("message_ids", []):
+    if rid in profile.get("author_ids", []):
+        return "author", "", ""
+    role = "described" if line.get("described") else "message"
+    # A message view with no id of its own, known by its parent's id (Discord names no message text view).
+    unnamed_message = not rid and short_id(line.get("parent_rid", "")) in profile.get("message_parent_ids", [])
+    if role == "message" and rid not in profile.get("message_ids", []) and not unnamed_message:
         return "other", "", ""
     for rule in profile.get("direction_rules", []):
-        if rule["by"] == "description_prefix" and line["desc"].startswith(rule["value"]):
-            return "message", rule["direction"], "the app's own description"
-        if rule["by"] == "description_contains" and rule["value"] in line["desc"]:
-            return "message", rule["direction"], "the app's own description"
+        if rule["by"] == "description_prefix" and line["desc"].startswith(rule["value"]) and role == "message":
+            return role, rule["direction"], "the app's own description"
+        if rule["by"] == "description_contains" and rule["value"] in line["desc"] and role == "message":
+            return role, rule["direction"], "the app's own description"
         if rule["by"] == "side" and line["side"] == rule["value"]:
-            return "message", rule["direction"], "side of the screen (inferred)"
-    return "message", "", ""
+            return role, rule["direction"], "side of the screen (inferred)"
+    return role, "", ""
 
 
 def picture_overlap(prev_png, cur_png, list_bounds, reveal):
@@ -229,7 +256,7 @@ def build(export, profile_folder=None):
     for w in walks:
         merged, unjoined, by_picture, prev_png = [], 0, 0, None
         for step, entry, png, tree in w["frames"]:
-            frame = frame_lines(os.path.join(export, "trees", tree), package)
+            frame = frame_lines(os.path.join(export, "trees", tree), package, profile)
             for x in frame:
                 x.update(step=step, png=png, joined=None)
             before = {id(x) for x in merged}
@@ -257,6 +284,8 @@ def build(export, profile_folder=None):
         last_time = ""
         for i, x in enumerate(merged, 1):
             role, direction, basis = classify(x, profile)
+            if profile and profile.get("single_column") and role in ("message", "author", "described"):
+                x["side"] = "left"
             if role == "time":
                 last_time = x["text"]
             rows.append({"item": w["item"] or "", "line": i, "role": role, "direction": direction, "direction_basis": basis,
@@ -266,6 +295,9 @@ def build(export, profile_folder=None):
                          "bounds_on_that_screenshot": "[%d,%d][%d,%d]" % x["bounds"],
                          "joined_to_previous_frame": "" if x["joined"] is None else (
                              "by the screenshots" if x["joined"] == "picture" else "yes" if x["joined"] else "NO")})
+    if profile and profile.get("single_column"):
+        notes.insert(0, "This app shows every message in one column, whoever wrote it, so its lines are placed on the "
+                        "left and the side column does not say where they sat. Who wrote a line is the bold author line before it.")
     if profile:
         notes.insert(0, f"Profile for {package} used (checked with {profile.get('checked_with', 'version not stated')}; "
                         f"this export is version {manifest['apps_under_test'][0].get('version_name_at_add')}).")
@@ -284,12 +316,14 @@ def write(export, profile_folder=None):
     out = ["<!doctype html><meta charset='utf-8'><title>AppWalk transcript</title><style>",
            "body{font:15px system-ui,sans-serif;margin:24px;color:#111}table{border-collapse:collapse;width:100%;max-width:820px}",
            "td{vertical-align:top;padding:4px 8px;border-top:1px solid #ddd}td.pic{width:240px;border-top:2px solid #888}img{width:220px;border:1px solid #999}",
-           ".right{text-align:right}.across{text-align:center;color:#555}.other,.time{color:#666;font-size:13px}",
+           ".right{text-align:right}.across{text-align:center;color:#555}.other,.time{color:#666;font-size:13px}"
+           ".author{font-weight:600;font-size:13px}.described{font-style:italic;color:#444}",
            ".meta{color:#666;font-size:12px}h2{margin-top:32px}.note{background:#fff3cd;padding:8px;margin:6px 0}</style>",
            f"<h1>AppWalk transcript: {e(manifest['apps_under_test'][0]['package'])}</h1>",
            "<p>Text from the view trees the app reported, in reading order, beside the screenshot each line was first "
            "seen on. The screenshots are the record of what was on the screen; this text is what the app reported. "
-           "Left and right are where a line sat on the screen. A direction is given only where the note below says how.</p>"]
+           "Left and right are where a line sat on the screen. A direction is given only where the note below says how. "
+           "A line in square brackets is the description the app gave an item with no text, such as a picture.</p>"]
     out += [f"<p class='note'>{e(n)}</p>" for n in notes]
     # Lines first seen on the same screenshot sit beside it: the picture cell spans those rows.
     groups = []
@@ -312,7 +346,8 @@ def write(export, profile_folder=None):
                 pic = (f"<td class='pic' rowspan='{len(g)}'><a href='screens/{e(shot)}'><img src='screens/{e(shot)}' loading='lazy'></a>"
                        f"<div class='meta'>step {r['first_seen_step']}</div></td>")
             label = " · ".join(x for x in (r["direction"], r["direction_basis"]) if x)
-            out.append(f"<tr>{pic}<td class='{e(r['side'])} {e(r['role'])}'>{e(r['text'])}"
+            shown = f"[{r['text']}]" if r["role"] == "described" else r["text"]
+            out.append(f"<tr>{pic}<td class='{e(r['side'])} {e(r['role'])}'>{e(shown)}"
                        f"<div class='meta'>{e(label)}{' · ' if label and r['app_description'] else ''}{e(r['app_description'])}"
                        f"{' · NOT JOINED to the frame before' if r['joined_to_previous_frame'] == 'NO' else ''}"
                        f"{' · joined to the frame before by the screenshots (no shared text)' if r['joined_to_previous_frame'] == 'by the screenshots' else ''}</div></td></tr>")
