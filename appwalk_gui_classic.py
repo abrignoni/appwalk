@@ -103,6 +103,7 @@ class App:
         for v in (self.label, self.package, self.out):
             v.trace_add("write", lambda *_: self.hint.configure(text=""))
         self.refresh_devices()
+        self.fix_size()
         self.poller = root.after(100, self.poll)
         self.ticker = root.after(1000, self.tick)
 
@@ -361,6 +362,23 @@ class App:
         win.after(400, lambda: win.winfo_exists() and win.attributes("-topmost", False))
         win.focus_force()
         win.after(20, lambda: self.place_dialog(win))
+
+    def fix_size(self):
+        """One window size for all four steps: the largest any page asks for, measured here because fonts
+        differ between systems. Left to itself the window grew and shrank from one step to the next."""
+        root, keep = self.root, self.page
+        w = h = 0
+        for n in range(4):
+            self.show(n)
+            root.update_idletasks()
+            w, h = max(w, root.winfo_reqwidth()), max(h, root.winfo_reqheight())
+        self.show(keep)
+        scale = getattr(root, "_get_window_scaling", lambda: 1)()   # CustomTkinter sizes in unscaled units
+        w, h = int(w / scale) + 20, int(h / scale) + 20
+        sw, sh = int(root.winfo_screenwidth() / scale), int(root.winfo_screenheight() / scale)
+        w, h = min(w, sw - 40), min(h, sh - 80)
+        root.minsize(w, h)
+        root.geometry(f"{w}x{h}")
 
     def place_dialog(self, win):
         """Over the middle of the main window, and wholly on the screen: left where the system puts it, a tall

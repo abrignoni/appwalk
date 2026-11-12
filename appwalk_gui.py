@@ -511,7 +511,6 @@ def main():
         print("CustomTkinter is not installed; opening the plain window. pip install customtkinter for the newer one.")
         return classic.main()
     root = ctk.CTk()
-    root.minsize(980, 720)
     root.title("AppWalk")
     app = App(root)
     root.protocol("WM_DELETE_WINDOW", app.close)
