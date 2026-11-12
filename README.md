@@ -111,9 +111,9 @@ What a walk does:
    fades out about 2 s after a scroll, is left out of every comparison. On the Pixel 7a, one Signal
    conversation took 175 s for 26 screenshots (6.7 s each), against 449 s for 60 screenshots (7.5 s
    each) at 0.30 with the tree comparison.
-   At 0.70 in that conversation, 18 transcript lines were marked NOT JOINED: at those steps the part of
-   the screen two screenshots share held no text. Measured from the pictures, the list moved less than
-   its height at every step, so nothing was skipped; the transcript cannot see that yet.
+   At 0.70 in that conversation, the part of the screen two screenshots share held no text at some
+   steps (18 lines in one run), so the text join had nothing to match. See "Transcript" for how those
+   frames are now joined by the pictures.
 3. Scrolls about 70% of the list height (`--fraction`, default 0.70), so each screenshot is mostly new
    and consecutive frames still overlap. 0.30 is the cautious setting.
    If a frame shares nothing with the one before, it logs a gap, goes back and comes forward in
@@ -156,8 +156,13 @@ So nobody has to type what the pictures show, each export gets a transcript made
 
 - The text lines inside the scrolling list of each screen, top to bottom.
 - Frames joined into one sequence by the lines two consecutive screenshots share, so a line that was
-  on three overlapping screenshots appears once. A frame that shares nothing with the one before is
-  marked `NOT JOINED`.
+  on three overlapping screenshots appears once.
+- When two consecutive frames share no text (the shared part of the screen holds a picture, for
+  example), the screenshots are compared instead: the shift at which the old picture lines up with
+  the new one is searched for. If the pictures clearly overlap, the lines are marked `by the
+  screenshots`. Otherwise they are marked `NOT JOINED`: look at the pictures there, something may be
+  missing between them. The limits were set on Signal on a Pixel 7a: 67 of 69 neighbouring pairs
+  were confirmed and 0 of 129 pairs that share nothing. Other apps were not measured.
 - For each line: the screenshot it was first seen on, where it sat (left, right, across) and the
   app's own description of it, when the app gives one.
 

@@ -175,8 +175,11 @@ beside them is what the app reported, which is usually the same and is not guara
 - "sent" and "received" appear only for apps that have a profile, and each says on what basis: the
   app's own description, or the side of the screen. Today there are profiles for Google Messages and
   Fossify Messages only.
-- A line marked NOT JOINED means two screenshots in a row shared nothing. Look at the pictures
-  there: something may be missing between them.
+- A line marked "joined by the screenshots" came from a screenshot that shared no text with the one
+  before, where the pictures themselves showed that the two overlap (a photo in the shared part, for
+  example).
+- A line marked NOT JOINED means two screenshots in a row shared no text and the pictures did not
+  clearly overlap either. Look at the pictures there: something may be missing between them.
 
 ## Check an export
 

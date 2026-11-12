@@ -153,6 +153,60 @@ def classify(line, profile):
     return "message", "", ""
 
 
+def picture_overlap(prev_png, cur_png, list_bounds, reveal):
+    """How many pixels of the list two screenshots share, measured from the pictures, or None when no
+    clear overlap is found or Pillow is missing.
+
+    For screens whose shared part holds no text (a photo, a sticker), the text join has nothing to
+    work with. The list area of both pictures is shrunk, and the shift at which the old picture lines
+    up with the new one is searched for. The top and bottom 7% of the list (floating labels, buttons
+    over the list) and a strip at the right edge (the scrollbar) are left out. A match counts only
+    when the shared part is at least 5% of the list's height and is not flat (a blank area lines up at
+    any shift), the best shift differs on average by under 12 grey levels out of 255, and it is less
+    than half the difference at any shift more than 10 rows away (a real overlap is one sharp best).
+
+    The limits were set on Signal on a Pixel 7a, 12 November 2026: 67 of 69 neighbouring screenshot
+    pairs were confirmed, and 0 of 129 pairs two or three steps apart, which share nothing. Other apps
+    were not measured."""
+    try:
+        from PIL import Image, ImageChops, ImageStat
+    except ImportError:
+        return None
+    try:
+        a, b = Image.open(prev_png).convert("L"), Image.open(cur_png).convert("L")
+    except OSError:
+        return None
+    if a.size != b.size:
+        return None
+    l, t, r, btm = list_bounds
+    h = btm - t
+    t, btm = t + h * 7 // 100, btm - h * 7 // 100
+    r -= max(4, a.width * 15 // 1000)
+    if r - l < 40 or btm - t < 100:
+        return None
+    scale = 4
+    size = ((r - l) // scale, (btm - t) // scale)
+    a = a.crop((l, t, r, btm)).resize(size)
+    b = b.crop((l, t, r, btm)).resize(size)
+    w, hh = size
+    least = max(2, hh * 5 // 100)
+    tried = []
+    for s in range(1, hh - least):
+        # Reveal above: older content comes in at the top, so the old picture's top now sits s rows lower.
+        old, new = (a.crop((0, 0, w, hh - s)), b.crop((0, s, w, hh))) if reveal == "above" else \
+                   (a.crop((0, s, w, hh)), b.crop((0, 0, w, hh - s)))
+        if ImageStat.Stat(old).stddev[0] < 4:
+            continue
+        tried.append((ImageStat.Stat(ImageChops.difference(old, new)).mean[0], s))
+    if not tried:
+        return None
+    best = min(tried)
+    elsewhere = [d for d, s in tried if abs(s - best[1]) > 10]
+    if best[0] >= 12 or not elsewhere or best[0] >= 0.5 * min(elsewhere):
+        return None
+    return (hh - best[1]) * scale
+
+
 def build(export, profile_folder=None):
     """Returns (rows, notes). Rows are dicts with COLUMNS as keys."""
     with open(os.path.join(export, "manifest.json"), encoding="utf-8") as f:
@@ -173,7 +227,7 @@ def build(export, profile_folder=None):
                 by_entry[r["entry_id"]] = d
     rows, notes = [], []
     for w in walks:
-        merged, unjoined = [], 0
+        merged, unjoined, by_picture, prev_png = [], 0, 0, None
         for step, entry, png, tree in w["frames"]:
             frame = frame_lines(os.path.join(export, "trees", tree), package)
             for x in frame:
@@ -181,13 +235,25 @@ def build(export, profile_folder=None):
             before = {id(x) for x in merged}
             merged, shared = join(merged, frame, w["reveal"])
             if shared == 0 and frame:
-                unjoined += 1
+                root = ET.parse(os.path.join(export, "trees", tree)).getroot()
+                _, cb = container(root, package)
+                px = picture_overlap(os.path.join(export, "screens", os.path.basename(prev_png)),
+                                     os.path.join(export, "screens", os.path.basename(png)), cb, w["reveal"]) if prev_png and cb else None
+                if px:
+                    shared = "picture"
+                    by_picture += 1
+                else:
+                    unjoined += 1
+            prev_png = png
             for x in merged:
                 if id(x) not in before:
                     x["joined"] = shared
         if unjoined:
             notes.append(f"{w['item'] or '(the screen walked)'}: {unjoined} frame(s) shared no line with the one before; "
                          "lines may be missing or repeated there")
+        if by_picture:
+            notes.append(f"{w['item'] or '(the screen walked)'}: {by_picture} frame(s) shared no text with the one before; "
+                         "the screenshots show the two overlap, so those frames were joined by the pictures")
         last_time = ""
         for i, x in enumerate(merged, 1):
             role, direction, basis = classify(x, profile)
@@ -198,7 +264,8 @@ def build(export, profile_folder=None):
                          "shown_time": last_time if role == "message" and profile and profile.get("time_follows_message") is False else "",
                          "first_seen_step": x["step"], "screenshot": x["png"], "resource_id": x["rid"],
                          "bounds_on_that_screenshot": "[%d,%d][%d,%d]" % x["bounds"],
-                         "joined_to_previous_frame": "" if x["joined"] is None else ("yes" if x["joined"] else "NO")})
+                         "joined_to_previous_frame": "" if x["joined"] is None else (
+                             "by the screenshots" if x["joined"] == "picture" else "yes" if x["joined"] else "NO")})
     if profile:
         notes.insert(0, f"Profile for {package} used (checked with {profile.get('checked_with', 'version not stated')}; "
                         f"this export is version {manifest['apps_under_test'][0].get('version_name_at_add')}).")
@@ -247,7 +314,8 @@ def write(export, profile_folder=None):
             label = " · ".join(x for x in (r["direction"], r["direction_basis"]) if x)
             out.append(f"<tr>{pic}<td class='{e(r['side'])} {e(r['role'])}'>{e(r['text'])}"
                        f"<div class='meta'>{e(label)}{' · ' if label and r['app_description'] else ''}{e(r['app_description'])}"
-                       f"{' · NOT JOINED to the frame before' if r['joined_to_previous_frame'] == 'NO' else ''}</div></td></tr>")
+                       f"{' · NOT JOINED to the frame before' if r['joined_to_previous_frame'] == 'NO' else ''}"
+                       f"{' · joined to the frame before by the screenshots (no shared text)' if r['joined_to_previous_frame'] == 'by the screenshots' else ''}</div></td></tr>")
     out.append("</table>")
     with open(os.path.join(export, "transcript.html"), "w", encoding="utf-8") as f:
         f.write("\n".join(out))

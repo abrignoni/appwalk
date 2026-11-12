@@ -479,5 +479,43 @@ class ExportTests(unittest.TestCase):
         self.assertTrue(dict(e["checks"])["hash chain"].startswith("intact"))
 
 
+@unittest.skipUnless(appwalk.pixels_available(), "needs Pillow")
+class PictureOverlapTests(unittest.TestCase):
+    """Two screenshots of a list whose shared part holds no text are joined only by the pictures."""
+
+    def setUp(self):
+        import random
+        from PIL import Image
+        random.seed(7)
+        self.tmp = tempfile.mkdtemp()
+        # A tall made-up page of grey blocks, like pictures in a chat, and 1000-pixel windows onto it.
+        page = Image.new("L", (400, 4000), 255)
+        for y in range(0, 4000, 40):
+            for x in range(0, 400, 40):
+                page.paste(random.randint(0, 255), (x, y, x + 40, y + 40))
+        self.page = page
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+
+    def window(self, top, name):
+        path = os.path.join(self.tmp, name)
+        self.page.crop((0, top, 400, top + 1000)).save(path)
+        return path
+
+    def test_a_real_overlap_is_found(self):
+        import transcript
+        # Revealing above: the new screenshot shows the page 700 pixels higher, so 300 pixels are shared.
+        old, new = self.window(2000, "old.png"), self.window(1300, "new.png")
+        px = transcript.picture_overlap(old, new, (0, 0, 400, 1000), "above")
+        self.assertIsNotNone(px)
+        self.assertLess(abs(px - (300 - 140)), 12)   # the shared part, less the 7% left out at top and bottom
+
+    def test_screenshots_that_share_nothing_are_not_joined(self):
+        import transcript
+        old, new = self.window(2500, "old.png"), self.window(1300, "new.png")
+        self.assertIsNone(transcript.picture_overlap(old, new, (0, 0, 400, 1000), "above"))
+
+
 if __name__ == "__main__":
     unittest.main()
