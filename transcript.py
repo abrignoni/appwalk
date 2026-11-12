@@ -82,6 +82,7 @@ def frame_lines(tree_path, package, profile=None):
     if node is None:
         return []
     described = set((profile or {}).get("described_ids", []))
+    bubbles = set((profile or {}).get("bubble_ids", []))
     parent = {ch: p for p in node.iter() for ch in p}
     taken = set()
     out = []
@@ -94,9 +95,17 @@ def frame_lines(tree_path, package, profile=None):
         rid = n.get("resource-id") or ""
         up = parent.get(n)
         parent_rid = (up.get("resource-id") or "") if up is not None else ""
+        # The side of a message is the side of its bubble where the profile names one: short text in a wide
+        # bubble (a reply, whose quote widens it) sits at the bubble's far edge, not the screen's.
+        sb, q = b, up
+        while bubbles and q is not None and q is not node:
+            if short_id(q.get("resource-id") or "") in bubbles and box(q):
+                sb = box(q)
+                break
+            q = parent.get(q)
         if n.get("text"):
             out.append({"text": n.get("text"), "desc": n.get("content-desc") or "", "rid": rid, "parent_rid": parent_rid,
-                        "bounds": b, "side": side_of(b, cb), "described": False})
+                        "bounds": b, "side": side_of(sb, cb), "described": False})
         elif n.get("content-desc") and short_id(rid) in described:
             q, nested = up, False
             while q is not None:
@@ -107,7 +116,7 @@ def frame_lines(tree_path, package, profile=None):
             taken.add(id(n))
             if not nested:
                 out.append({"text": n.get("content-desc"), "desc": n.get("content-desc"), "rid": rid, "parent_rid": parent_rid,
-                            "bounds": b, "side": side_of(b, cb), "described": True})
+                            "bounds": b, "side": side_of(sb, cb), "described": True})
     out.sort(key=lambda x: (x["bounds"][1], x["bounds"][0]))
     return out
 

@@ -191,6 +191,9 @@ What a profile can say, as JSON in `profiles/<package>.json`:
 - `direction_rules`: how a sent message is told from a received one, by the app's description or the
   side of the screen.
 - `single_column`: the app shows every message in one column, so lines are placed on the left.
+- `bubble_ids`: the view that is a message's bubble. The side of a line is then the side of its
+  bubble. Without it, a short reply in a bubble the quote has widened to the far edge read as the
+  other side (seen once in Signal, where `body_bubble` is named).
 
 The transcript is a reading aid, made from the saved files, and can be made again with
 `python3 appwalk.py transcript <export folder>`. It is not in the hash chain. The screenshots are the

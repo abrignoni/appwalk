@@ -462,6 +462,22 @@ class TranscriptTests(unittest.TestCase):
         self.assertEqual([x["text"] for x in transcript.frame_lines(tree, "p")], ["hello"])   # without a profile, as before
         shutil.rmtree(os.path.dirname(tree))
 
+    def test_side_comes_from_the_bubble_when_the_profile_names_one(self):
+        import transcript
+        # A reply: the quote widens the bubble to the right edge, the short answer sits at its left.
+        tree = os.path.join(tempfile.mkdtemp(), "t.xml")
+        with open(tree, "w", encoding="utf-8") as f:
+            f.write('<?xml version="1.0"?><hierarchy><node class="androidx.recyclerview.widget.RecyclerView" package="p" '
+                    'resource-id="p:id/list" scrollable="true" bounds="[0,0][1080,2000]" text="" content-desc="">'
+                    '<node class="FrameLayout" package="p" resource-id="p:id/body_bubble" bounds="[205,100][1038,400]" text="" content-desc="">'
+                    '<node class="TextView" package="p" resource-id="p:id/quote_text" bounds="[253,120][941,180]" text="quoted" content-desc=""/>'
+                    '<node class="TextView" package="p" resource-id="p:id/body" bounds="[237,200][709,260]" text="ok" content-desc=""/>'
+                    '</node></node></hierarchy>')
+        side = lambda prof: {x["text"]: x["side"] for x in transcript.frame_lines(tree, "p", prof)}["ok"]
+        self.assertEqual(side({}), "left")                                  # by the text's own edges: wrong
+        self.assertEqual(side({"bubble_ids": ["body_bubble"]}), "right")   # by the bubble: right
+        shutil.rmtree(os.path.dirname(tree))
+
     def test_list_mode_gives_one_section_per_opened_row(self):
         out = run_list(FakeChat(CHATS), select="ask", answer="2-3")[0]
         self.assertEqual([r["text"] for r in self.lines(out, "Bruno")], [f"Bruno msg {i:03d}" for i in range(1, 5)])

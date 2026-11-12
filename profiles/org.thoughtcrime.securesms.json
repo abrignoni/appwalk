@@ -1,11 +1,29 @@
 {
   "package": "org.thoughtcrime.securesms",
   "checked_with": "Signal 8.35.2 on a Pixel 7a, Android 17, 12 November 2026, one conversation",
-  "message_ids": ["conversation_item_body"],
-  "time_ids": ["conversation_item_footer_date", "footer_date"],
-  "described_ids": ["image_view"],
+  "message_ids": [
+    "conversation_item_body"
+  ],
+  "time_ids": [
+    "conversation_item_footer_date",
+    "footer_date"
+  ],
+  "described_ids": [
+    "image_view"
+  ],
+  "bubble_ids": [
+    "body_bubble"
+  ],
   "direction_rules": [
-    {"by": "side", "value": "right", "direction": "sent"},
-    {"by": "side", "value": "left", "direction": "received"}
+    {
+      "by": "side",
+      "value": "right",
+      "direction": "sent"
+    },
+    {
+      "by": "side",
+      "value": "left",
+      "direction": "received"
+    }
   ]
 }

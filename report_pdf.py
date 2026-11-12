@@ -33,6 +33,42 @@ FONT_CANDIDATES = [
 ]
 
 
+BOLD_CANDIDATES = [
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    "/Library/Fonts/Arial Bold.ttf",
+    "C:\\Windows\\Fonts\\arialbd.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+]
+BOLD_COVERED = set()
+
+
+def bold_font():
+    """A bold face to set author names in. The body font (Arial Unicode on macOS) has none, so <b> did nothing."""
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    for path in BOLD_CANDIDATES:
+        if os.path.exists(path):
+            try:
+                f = TTFont("AWBold", path)
+                pdfmetrics.registerFont(f)
+                BOLD_COVERED.clear()
+                BOLD_COVERED.update(f.face.charToGlyph)
+                return "AWBold"
+            except Exception:  # an unreadable font file: try the next one
+                continue
+    return None
+
+
+def strong(text, bold):
+    """text (already escaped) in bold where the bold face can draw every character of it; otherwise in the
+    body font, underlined, so a name in a script the bold face lacks still stands out and still shows."""
+    plain = text.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+    if bold and all(ord(ch) in BOLD_COVERED or ch == " " for ch in plain):
+        return f'<font name="{bold}">{text}</font>'
+    return f"<u>{text}</u>"
+
+
 def font():
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
@@ -118,6 +154,7 @@ def build(export, out_name="report.pdf"):
     import transcript as T
 
     body, font_path = font()
+    bold = bold_font()
     manifest = json.load(open(os.path.join(export, "manifest.json"), encoding="utf-8"))
     rows = [json.loads(x) for x in open(os.path.join(export, "actions.jsonl"), encoding="utf-8") if x.strip()]
     lines, notes, _ = T.build(export)
@@ -206,7 +243,7 @@ def build(export, out_name="report.pdf"):
         else:
             text = esc(text)
         if r["role"] == "author":
-            return Paragraph(f"<b>{text}</b> &nbsp;{tag}", st["cl"])
+            return Paragraph(f"{strong(text, bold)} &nbsp;{tag}", st["cl"])
         if r["role"] in ("time", "other") or r["side"] == "across":
             return Paragraph(f"{text} &nbsp; {tag}", st["across"])
         extra = f' <font size="7" color="#5F6B7A">· {esc(label)}</font>' if label else ""
