@@ -16,4 +16,5 @@ Pillow there was 12.1.1 (Ubuntu) and 13.0.0 (Windows).
 
 Fonts: the PDF sets its text in a system font when it finds one (Arial Unicode on macOS, Arial on
 Windows, DejaVu Sans on Linux) and embeds the glyphs it uses. Otherwise it uses Helvetica, which is not
-embedded. The PDF also lists Helvetica, ReportLab's starting font, which is not embedded.
+embedded. The PDF also lists Helvetica, ReportLab's starting font, which is not embedded. A character
+the font cannot draw, most emoji among them, is written as its code (for example [U+1FAC2]).

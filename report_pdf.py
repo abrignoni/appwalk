@@ -14,13 +14,15 @@ Needs ReportLab. Without it, nothing is written and the export is unaffected.
 import hashlib
 import json
 import os
+import unicodedata
 import sys
 from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Fonts tried in order, so text in other scripts shows where the system has a font for it. A character the
-# font lacks prints as an empty box; the transcript files keep every character as reported.
+# font lacks (most emoji: no system font here draws colour emoji) is written as its code, such as [U+1FAF6],
+# instead of an empty box; the transcript files keep every character as reported.
 FONT_CANDIDATES = [
     "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
     "/Library/Fonts/Arial Unicode.ttf",
@@ -36,15 +38,40 @@ def font():
     for path in FONT_CANDIDATES:
         if os.path.exists(path):
             try:
-                pdfmetrics.registerFont(TTFont("AWBody", path))
+                f = TTFont("AWBody", path)
+                pdfmetrics.registerFont(f)
+                COVERED.clear()
+                COVERED.update(f.face.charToGlyph)
                 return "AWBody", path
             except Exception:  # an unreadable font file: try the next one
                 continue
+    COVERED.clear()
+    COVERED.update(range(32, 256))
     return "Helvetica", None
 
 
+COVERED = set()
+# Invisible marks that only steer how an emoji is drawn (style selectors, the joiner): dropped, not boxed.
+INVISIBLE = {0xFE0E, 0xFE0F, 0x200D}
+
+
+def drawable(s):
+    """s with each character the PDF font cannot draw written as its code point."""
+    if not COVERED:
+        return s
+    out = []
+    for ch in s:
+        c = ord(ch)
+        if c in INVISIBLE:
+            continue
+        if unicodedata.category(ch) == "Zs":   # any kind of space, such as the narrow one Android puts before PM
+            ch, c = " ", 32
+        out.append(ch if c in COVERED or ch in "\n\t" else f"[U+{c:04X}]")
+    return "".join(out)
+
+
 def esc(s):
-    return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return drawable(s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def when(row):
@@ -149,6 +176,8 @@ def build(export, out_name="report.pdf"):
               "basis for it.",
               "A line in square brackets is the description the app gave an item with no text, such as a picture. "
               "A bold line is the name of who wrote the lines after it, where the app shows one.",
+              "A code such as [U+1FAC2] is a character this report's font cannot draw, most often an emoji; look it up "
+              "by that code, or see the transcript page or the screenshot, which show it as reported.",
               "Each line's tag, such as S12, names the screenshot it was first seen on. Click it to go to that screenshot.",
               "This report is made from the export's files and is not in its hash chain. Its own SHA-256 is in "
               "report.pdf.sha256 beside it. The export's latest row hash, on every page, covers every row and every file "

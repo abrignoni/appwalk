@@ -503,6 +503,24 @@ class ExportTests(unittest.TestCase):
         self.assertTrue(dict(e["checks"])["hash chain"].startswith("intact"))
 
 
+class ReportTextTests(unittest.TestCase):
+    def test_characters_the_font_lacks_are_written_as_codes(self):
+        try:
+            import report_pdf
+        except ImportError:
+            self.skipTest("needs report_pdf")
+        saved = set(report_pdf.COVERED)
+        try:
+            report_pdf.COVERED.clear()
+            report_pdf.COVERED.update(range(32, 256))
+            report_pdf.COVERED.add(0x2764)
+            # style selector dropped, narrow space drawn as a space, a missing emoji written as its code
+            self.assertEqual(report_pdf.drawable("7:26\u202fPM \u2764\ufe0f \U0001FAC2"), "7:26 PM \u2764 [U+1FAC2]")
+        finally:
+            report_pdf.COVERED.clear()
+            report_pdf.COVERED.update(saved)
+
+
 @unittest.skipUnless(appwalk.pixels_available(), "needs Pillow")
 class PictureOverlapTests(unittest.TestCase):
     """Two screenshots of a list whose shared part holds no text are joined only by the pictures."""
