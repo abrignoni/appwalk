@@ -67,7 +67,9 @@ def build(work):
               "--add-data", f"{os.path.join(ROOT, 'assets')}{os.pathsep}assets",
               "--add-data", f"{os.path.join(ROOT, 'profiles')}{os.pathsep}profiles",
               "--collect-data", "customtkinter", "--collect-data", "reportlab"]
-    for m in ("appwalk_gui_classic", "teach_gui", "report_pdf", "transcript", "teach"):
+    # PIL._tkinter_finder: Pillow's Tk part loads it at run time and PyInstaller does not see it; without it
+    # the Linux window failed on its first picture ("invalid command name PyImagingPhoto"), seen in CI.
+    for m in ("appwalk_gui_classic", "teach_gui", "report_pdf", "transcript", "teach", "PIL._tkinter_finder"):
         common += ["--hidden-import", m]
     icon = os.path.join(ROOT, "assets", {"macos": "appwalk_1024.png", "windows": "appwalk.ico"}.get(SYSTEM, "appwalk_256.png"))
     ok = run([sys.executable, "-m", "PyInstaller", *common, "--windowed", "--name", "AppWalk", "--icon", icon,
