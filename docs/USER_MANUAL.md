@@ -42,7 +42,10 @@ It is for a phone you are allowed to examine: with the owner's consent or other 
 does not unlock anything, guess anything or get around any lock. If a lock or a password prompt comes
 up, it stops, or waits for you to deal with it.
 
-It installs nothing on the phone. It does change the phone in these ways:
+It installs nothing on the phone. It uses three programs that are already there: `uiautomator` for the
+view tree, `screencap` for the screenshot and `input` for swipes and taps. Screenshots and view trees
+go straight to your computer; on the test emulator, reading the view tree left no file on the phone's
+storage. It does change the phone in these ways:
 
 - USB debugging has to be on, and the phone stores your computer's key when you accept the prompt.
 - A conversation that AppWalk opens is marked read, as it would be if you opened it yourself. (Seen
@@ -470,6 +473,31 @@ All on 11 and 12 November 2026.
 
 **The window**, driven through its own controls against the emulator: 38 of 38 checks on macOS
 (Python 3.12), Ubuntu 26.04 (Python 3.14) and Windows 11 (Python 3.11), the last two on ARM64.
+
+**Other measurements**, on the emulator unless said:
+
+- Google Messages, one conversation of 66 texts (60 received, 6 sent): every text ALEAPP reported for
+  it was found as a message bubble in the view trees, and no bubble that ALEAPP did not report.
+- The transcript of the 16 conversations came out in ALEAPP's order with the same sent or received
+  for every one of the 227 texts, once from the side of the screen and once from the app's own
+  description. Fossify Messages: the same for all 226 texts it shows.
+- Marked read: with two of 15 unread conversations chosen, those two became read and the other 13
+  stayed unread.
+- `--skip-list-capture` with one conversation chosen: no file of the export named any other
+  conversation.
+- The same app version gave message bubbles a different view id in two sessions. The walk does not
+  use view ids, so it was not affected; a profile that names that id would be.
+- Fossify Messages showed a fault, since fixed and tested: a row cut off by the edge of the list lost
+  its title line, and its preview line was read as another conversation.
+- Joining screenshots by their pictures (section 10): the limits were set on Signal on the Pixel 7a,
+  where 67 of 69 neighbouring pairs were confirmed and 0 of 129 pairs that share nothing. Other apps
+  were not measured.
+- Taking every described item into the transcript would have added 215 lines of delivery ticks and
+  thumbnails to one Signal conversation, which is why a profile names the ones it wants.
+- Teaching (section 12): a Google Messages profile taught by two clicks gave the same sent and
+  received for all 229 texts as the profile that ships with AppWalk. On the Pixel 7a exports, with the
+  clicks placed in code by view id and position, never by what a message says, Discord's taught
+  profile matched the shipped one in every field and WhatsApp's added only its bubble view.
 
 Not tried: any other phone maker or Android version on a real phone, Telegram, a Flutter or game
 engine app, rows that share a title, right-to-left layouts, a list that scrolls sideways.
