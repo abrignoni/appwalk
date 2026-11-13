@@ -62,7 +62,7 @@ class FakePhone:
             if self.photo:
                 items.append(f'<node class="android.widget.ImageView" package="{self.front}" resource-id="{self.front}:id/image" '
                              f'text="" content-desc="Photo" password="false" scrollable="false" checked="false" selected="false" {b} />')
-        secret = (f'<node class="android.widget.EditText" package="{self.front}" resource-id="{self.front}:id/pin" text="9041" '
+        secret = (f'<node class="android.widget.EditText" package="{self.front}" resource-id="{self.front}:id/pin" text="90417263" '
                   f'content-desc="" password="true" scrollable="false" checked="false" selected="false" bounds="[0,0][1080,100]" />'
                   if self.password else "")
         return (f"<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation=\"0\">"
@@ -194,27 +194,30 @@ class WalkTests(unittest.TestCase):
     def test_password_prompt_stops_the_walk_and_its_text_is_never_stored(self):
         out, log, s = run(FakePhone(password=True))
         self.assertEqual(s["screens"], 0)
-        self.assertNotIn("9041", read(os.path.join(out, "actions.jsonl"), "r"))
+        self.assertNotIn("90417263", read(os.path.join(out, "actions.jsonl"), "r"))
 
     def test_code_typed_by_the_examiner_is_entered_and_not_recorded(self):
         phone = FakePhone(password=True, count=5, scrollable=False)
-        out, log, s = run(phone, on_blocked="ask", ask=lambda why: "7731")
-        self.assertEqual(phone.typed, ["7731"])
+        out, log, s = run(phone, on_blocked="ask", ask=lambda why: "77319058")
+        self.assertEqual(phone.typed, ["77319058"])
         self.assertGreater(s["screens"], 0)
-        everything = b"".join(read(os.path.join(dp, f)) for dp, _, fs in os.walk(out) for f in fs)
-        self.assertNotIn(b"7731", everything)
+        # Eight digits, not four: an export holds about 9,000 four-character windows of random hex (row ids,
+        # hashes), so a four-digit code turned up there by chance (once in CI, windows-x64, 13 November 2026).
+        where = [os.path.relpath(os.path.join(dp, f), out) for dp, _, fs in os.walk(out) for f in fs
+                 if b"77319058" in read(os.path.join(dp, f))]
+        self.assertEqual(where, [])
         self.assertIn("secret_entered", [r["action"] for r in log.rows])
 
     def test_password_field_text_is_removed_from_a_tree(self):
         t = appwalk.Tree(FakePhone(password=True).tree_raw())
         self.assertEqual(t.secret_fields, 1)
-        self.assertNotIn(b"9041", t.xml)
+        self.assertNotIn(b"90417263", t.xml)
 
     def test_only_a_password_field_is_emptied_not_text_that_mentions_passwords_or_codes(self):
         raw = FakePhone(password=True).tree_raw().replace(
             b'text="item 040"', b'text="my password is tulip-9 and the PIN code is 4821"')
         t = appwalk.Tree(raw)
-        self.assertNotIn(b"9041", t.xml)                                   # what was typed in the password field
+        self.assertNotIn(b"90417263", t.xml)                                   # what was typed in the password field
         self.assertIn(b"my password is tulip-9 and the PIN code is 4821", t.xml)  # an ordinary message
         self.assertIn(b":id/pin", t.xml)                                   # the field itself is still listed
 
