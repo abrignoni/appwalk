@@ -73,7 +73,7 @@ Their licences are in `THIRD_PARTY_NOTICES.md`.
 
 ## 3. Get AppWalk and install what it uses
 
-Get AppWalk from https://github.com/abrignoni/appwalk, with **Code**, **Download ZIP**, or with git:
+Get AppWalk from <https://github.com/abrignoni/appwalk>, with **Code**, **Download ZIP**, or with git:
 
 ```bash
 git clone https://github.com/abrignoni/appwalk.git
@@ -88,7 +88,7 @@ python3.12 -m pip install customtkinter reportlab pillow
 ```
 
 For `adb`, either download the SDK Platform-Tools from Android
-(https://developer.android.com/tools/releases/platform-tools) and add the folder to your PATH, or
+(<https://developer.android.com/tools/releases/platform-tools>) and add the folder to your PATH, or
 with Homebrew:
 
 ```bash
@@ -134,7 +134,7 @@ AppWalk from packages unpacked without `sudo`, with ReportLab 4.4.6; Ubuntu's ow
 1. Turn on Developer options. On a Pixel: **Settings**, **About phone**, then tap **Build number**
    seven times until the phone says you are now a developer. On other phones **Build number** is
    elsewhere; Android lists the places for several makers at
-   https://developer.android.com/studio/debug/dev-options. Some phones ask for the owner's fingerprint
+   <https://developer.android.com/studio/debug/dev-options>. Some phones ask for the owner's fingerprint
    or face here and will not take the PIN.
 2. In **Developer options**, turn on **USB debugging**. On Android 9 and later it is under
    **Settings**, **System**, then **Developer options**.
