@@ -2,7 +2,7 @@
 
 # AppWalk user manual
 
-For AppWalk 0.1.0, 12 November 2026. What it was tested on is in section 14; anything not listed there
+For AppWalk 0.1.1, 13 November 2026. What it was tested on is in section 14; anything not listed there
 has not been tried.
 
 Every picture in this manual comes from AppWalk driven against an Android 15 emulator with made-up
@@ -467,7 +467,7 @@ app, the run stops.
 
 ## 14. What it was tried on
 
-All on 11 and 12 November 2026.
+On 11 to 13 November 2026.
 
 **Android 15 emulator** (`sdk_gphone64_arm64`, API 35), made-up texts:
 
@@ -487,6 +487,13 @@ All on 11 and 12 November 2026.
   449 s.
 - The reports of all three were read by the owner against the screenshots: order right, sent and
   received right after one fix, pictures named where the app names them.
+- 13 November, airplane mode on: WhatsApp and Signal walked again with the changes of 12 November,
+  no gaps; the 0.1.0 macOS ARM64 download walked Signal twice, once from its command line and once
+  through its window, and its export check passed both times. In the window run the walk missed once,
+  went back and took that part again; with 0.1.1 its transcript is the same, line for line, as a
+  walk of the same conversation four minutes later that had no miss.
+- Teaching Signal through the 0.1.0 dialog saved a photo's placeholder as the time and a picture as
+  the author. The dialog of 0.1.1 takes only text for those and shows the words of each click.
 
 **The window**, driven through its own controls against the emulator: 38 of 38 checks on macOS
 (Python 3.12), Ubuntu 26.04 (Python 3.14) and Windows 11 (Python 3.11), the last two on ARM64.
