@@ -62,7 +62,7 @@ class FakePhone:
             if self.photo:
                 items.append(f'<node class="android.widget.ImageView" package="{self.front}" resource-id="{self.front}:id/image" '
                              f'text="" content-desc="Photo" password="false" scrollable="false" checked="false" selected="false" {b} />')
-        secret = (f'<node class="android.widget.EditText" package="{self.front}" resource-id="{self.front}:id/pin" text="9041" '
+        secret = (f'<node class="android.widget.EditText" package="{self.front}" resource-id="{self.front}:id/pin" text="90417263" '
                   f'content-desc="" password="true" scrollable="false" checked="false" selected="false" bounds="[0,0][1080,100]" />'
                   if self.password else "")
         return (f"<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation=\"0\">"
@@ -174,7 +174,8 @@ class WalkTests(unittest.TestCase):
     def test_a_scroll_that_jumps_past_content_is_logged_and_retried(self):
         phone = FakePhone(count=80, swipe_gain=4.0)
         out, log, s = run(phone)
-        self.assertGreater(s["gaps"], 0)
+        self.assertGreater(s["gaps_retried"], 0)
+        self.assertEqual(s["gaps"], 0)                   # the retry joined the frame before the gap
         self.assertIn("continuity_gap", [r["action"] for r in log.rows])
         self.assertEqual(texts_seen(out), {f"item {i:03d}" for i in range(1, 81)})
 
@@ -193,27 +194,30 @@ class WalkTests(unittest.TestCase):
     def test_password_prompt_stops_the_walk_and_its_text_is_never_stored(self):
         out, log, s = run(FakePhone(password=True))
         self.assertEqual(s["screens"], 0)
-        self.assertNotIn("9041", read(os.path.join(out, "actions.jsonl"), "r"))
+        self.assertNotIn("90417263", read(os.path.join(out, "actions.jsonl"), "r"))
 
     def test_code_typed_by_the_examiner_is_entered_and_not_recorded(self):
         phone = FakePhone(password=True, count=5, scrollable=False)
-        out, log, s = run(phone, on_blocked="ask", ask=lambda why: "7731")
-        self.assertEqual(phone.typed, ["7731"])
+        out, log, s = run(phone, on_blocked="ask", ask=lambda why: "77319058")
+        self.assertEqual(phone.typed, ["77319058"])
         self.assertGreater(s["screens"], 0)
-        everything = b"".join(read(os.path.join(dp, f)) for dp, _, fs in os.walk(out) for f in fs)
-        self.assertNotIn(b"7731", everything)
+        # Eight digits, not four: an export holds about 9,000 four-character windows of random hex (row ids,
+        # hashes), so a four-digit code turned up there by chance (once in CI, windows-x64, 13 November 2026).
+        where = [os.path.relpath(os.path.join(dp, f), out) for dp, _, fs in os.walk(out) for f in fs
+                 if b"77319058" in read(os.path.join(dp, f))]
+        self.assertEqual(where, [])
         self.assertIn("secret_entered", [r["action"] for r in log.rows])
 
     def test_password_field_text_is_removed_from_a_tree(self):
         t = appwalk.Tree(FakePhone(password=True).tree_raw())
         self.assertEqual(t.secret_fields, 1)
-        self.assertNotIn(b"9041", t.xml)
+        self.assertNotIn(b"90417263", t.xml)
 
     def test_only_a_password_field_is_emptied_not_text_that_mentions_passwords_or_codes(self):
         raw = FakePhone(password=True).tree_raw().replace(
             b'text="item 040"', b'text="my password is tulip-9 and the PIN code is 4821"')
         t = appwalk.Tree(raw)
-        self.assertNotIn(b"9041", t.xml)                                   # what was typed in the password field
+        self.assertNotIn(b"90417263", t.xml)                                   # what was typed in the password field
         self.assertIn(b"my password is tulip-9 and the PIN code is 4821", t.xml)  # an ordinary message
         self.assertIn(b":id/pin", t.xml)                                   # the field itself is still listed
 
@@ -394,6 +398,45 @@ class TranscriptTests(unittest.TestCase):
                 self.assertEqual(got, [f"item {i:03d}" for i in range(1, 41)], (reveal, start))
                 self.assertTrue(all(r["joined_to_previous_frame"] in ("", "yes") for r in self.lines(out)))
 
+    def test_a_screen_the_walk_went_back_from_does_not_break_the_order(self):
+        # Each swipe goes four times as far as asked: the walk finds a gap, goes back and comes forward in
+        # smaller moves. The screen it went back from is set aside, so lines are not repeated or marked missing.
+        out, log, s = run(FakePhone(count=80, swipe_gain=4.0))
+        self.assertGreater(s["gaps_retried"], 0)
+        got = [r["text"] for r in self.lines(out)]
+        self.assertEqual(got, [f"item {i:03d}" for i in range(1, 81)])
+        self.assertTrue(all(r["joined_to_previous_frame"] in ("", "yes") for r in self.lines(out)))
+        import transcript
+        notes = transcript.build(out)[1]
+        self.assertTrue(any("went back and came forward again" in n for n in notes), notes)
+        try:
+            import report_pdf
+        except ImportError:
+            return
+        rows = [json.loads(x) for x in open(os.path.join(out, "actions.jsonl"), encoding="utf-8")]
+        said = " ".join(report_pdf.summary_lines(json.load(open(os.path.join(out, "manifest.json"), encoding="utf-8")), rows))
+        self.assertIn("went back and took that part again", said)
+        self.assertNotIn("Look at this", said)
+
+    def test_a_screenshot_with_more_lines_than_a_page_holds_still_makes_a_report(self):
+        # Lines with a grey note under each (two or three lines of type) beside one screenshot: 28 of them,
+        # the old fixed cut, are taller than a page, and the layout failed (LayoutError, seen on Ubuntu).
+        try:
+            import report_pdf
+            from reportlab.lib.styles import ParagraphStyle
+            from reportlab.platypus import Paragraph
+        except ImportError:
+            self.skipTest("needs ReportLab")
+        style = ParagraphStyle("x", fontSize=9.5, leading=12, spaceAfter=3)
+        note = '<br/><font size="7">received · the app\'s own description · ' + "said a long thing " * 6 + "</font>"
+        paras = [Paragraph(f"S1 line {i} with some words in it{note}", style) for i in range(60)]
+        width, limit = 300, 8.3 * 72
+        tall = lambda ps: sum(p.wrap(width, 10_000)[1] + p.getSpaceAfter() for p in ps)
+        self.assertGreater(tall(paras[:28]), limit)               # the old cut did not fit
+        chunks = report_pdf.by_height(paras, width, [limit])
+        self.assertEqual(sum(len(c) for c in chunks), 60)
+        self.assertTrue(all(tall(c) <= limit for c in chunks), [tall(c) for c in chunks])
+
     def test_every_line_names_a_screenshot_that_exists_and_showed_it(self):
         out = run(FakePhone())[0]
         for r in self.lines(out):
@@ -567,9 +610,10 @@ class ContinuityTests(unittest.TestCase):
         self.assertEqual(s["gaps"], 0)
         self.assertTrue(joins and all(j["joined"] and j["by"] == "screenshots" and j["overlap_px"] for j in joins))
 
-    def test_screenshots_that_do_not_overlap_are_a_gap(self):
+    def test_screenshots_that_do_not_overlap_are_a_gap_and_are_taken_again(self):
         s, joins = self.walk(text=False, photo=True, draw=True, swipe_gain=3.0, item_h=130)
-        self.assertGreater(s["gaps"], 0)
+        self.assertGreater(s["gaps_retried"], 0)
+        self.assertEqual(s["gaps"], 0)                   # the smaller moves overlap, so nothing is left open
 
     def test_shared_text_still_joins_without_looking_at_pictures(self):
         s, joins = self.walk()
@@ -620,6 +664,35 @@ class TeachTests(unittest.TestCase):
         self.assertEqual(prof["described_ids"], ["image"])        # the outer named view, so a picture is one line
         self.assertIsNone(click(5, 5))                            # nothing labelled there
         self.assertEqual(warnings, [])
+
+    def test_a_time_over_a_picture_and_a_click_on_the_picture(self):
+        # A time drawn over a photo sits inside the photo's views, which carry a description and no text.
+        # A click a little off the time must not pick the photo as the time, nor a picture as a name.
+        import teach
+        n = self.node
+        rows = (n("row", (0, 100, 1080, 600), inner=n("image", (500, 110, 1038, 590), desc="Photo",
+                                                      inner=n("blur", (510, 120, 1028, 580), desc="Photo")
+                                                      + n("when", (900, 540, 1020, 575), "2:54 PM")))
+                + n("row", (0, 700, 1080, 800), inner=n("body", (600, 710, 1040, 790), "ok")))
+        d, tree = self.export(rows)
+        self.assertEqual(teach.view_at(tree, "p", 950, 560, text_only=True)["rid"], "when")
+        self.assertIsNone(teach.view_at(tree, "p", 700, 300, text_only=True))     # bare picture: no text there
+        self.assertEqual(teach.view_at(tree, "p", 700, 300)["rid"], "blur")      # the picture step still takes it
+        self.assertTrue(teach.wants_text("time") and teach.wants_text("author") and not teach.wants_text("picture"))
+        # A view with no text given for time or author (as an older dialog allowed) is left out, with a warning.
+        pic = teach.view_at(tree, "p", 700, 300)
+        prof, warnings = teach.make_profile(d, {"sent": teach.view_at(tree, "p", 800, 750), "received": None,
+                                                "time": pic, "picture": pic, "author": pic})
+        self.assertNotIn("time_ids", prof)
+        self.assertNotIn("author_ids", prof)
+        self.assertEqual(prof["described_ids"], ["image"])
+        self.assertEqual(sum("no text" in w for w in warnings), 2)
+        with open(os.path.join(d, "actions.jsonl"), "a", encoding="utf-8") as f:   # one walk of that one screen
+            f.write(json.dumps({"action": "walk_start", "detail": json.dumps({"item": None, "reveal": "above"})}) + "\n")
+            f.write(json.dumps({"action": "screenshot", "entry_id": "e1", "screenshot": {"file": "s.png"},
+                                "detail": json.dumps({"step": 1, "tree_file": "t.xml", "screen_in_this_walk": 1})}) + "\n")
+        found = teach.preview(d, prof)
+        self.assertTrue(any(x.startswith("Messages: 1 lines") for x in found), found)
 
     def test_one_column_and_text_with_no_id(self):
         import teach
@@ -679,6 +752,9 @@ class ReportTextTests(unittest.TestCase):
             report_pdf.COVERED.add(0x2764)
             # style selector dropped, narrow space drawn as a space, a missing emoji written as its code
             self.assertEqual(report_pdf.drawable("7:26\u202fPM \u2764\ufe0f \U0001FAC2"), "7:26 PM \u2764 [U+1FAC2]")
+            # Direction marks around a name are invisible on the phone too: dropped. A private-use
+            # character has no Unicode meaning: kept as its code.
+            self.assertEqual(report_pdf.drawable("\u2066Ana\u2069 \ue063 x"), "Ana [U+E063] x")
         finally:
             report_pdf.COVERED.clear()
             report_pdf.COVERED.update(saved)

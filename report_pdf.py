@@ -99,12 +99,30 @@ def drawable(s):
     out = []
     for ch in s:
         c = ord(ch)
-        if c in INVISIBLE:
+        # Format characters (Unicode category Cf: the direction marks U+2066 to U+2069 that Android puts
+        # around names and numbers, zero-width joiners) are invisible on the phone too: dropped, not coded.
+        if c in INVISIBLE or unicodedata.category(ch) == "Cf":
             continue
         if unicodedata.category(ch) == "Zs":   # any kind of space, such as the narrow one Android puts before PM
             ch, c = " ", 32
         out.append(ch if c in COVERED or ch in "\n\t" else f"[U+{c:04X}]")
     return "".join(out)
+
+
+def by_height(paras, width, limits):
+    """paras cut into runs, the n-th no taller than limits[n] when set width wide. A single paragraph
+    taller than its limit still gets a run of its own (ReportLab splits a long paragraph itself only
+    outside a table, so such a run is left for the layout to report)."""
+    chunks, cur, used, n = [], [], 0.0, 0
+    for p in paras:
+        h = p.wrap(width, 10_000)[1] + p.getSpaceBefore() + p.getSpaceAfter()
+        if cur and used + h > limits[min(n, len(limits) - 1)]:
+            chunks.append(cur)
+            cur, used, n = [], 0.0, n + 1
+        cur.append(p)
+        used += h
+    chunks.append(cur)
+    return chunks
 
 
 def esc(s):
@@ -118,8 +136,8 @@ def when(row):
     return f"{local:%Y-%m-%d %H:%M:%S} UTC{'+' if row['tz_offset_min'] >= 0 else '-'}{m // 60:02d}:{m % 60:02d}"
 
 
-def summary_lines(manifest):
-    """The result in sentences, from the manifest alone."""
+def summary_lines(manifest, rows=None):
+    """The result in sentences, from the manifest and the log rows."""
     s = manifest["walk"]["summary"]
     shots = manifest["screenshots"]
     out = []
@@ -135,7 +153,24 @@ def summary_lines(manifest):
         if s.get("stop_reason"):
             out.append("The run ended early: " + s["stop_reason"])
     else:
-        out.append(f"{s['screens']} screenshots of the open screen" + ("." if clean(s, s.get("rewind_end_confirmed") is not None) else f". Look at this: {s.get('stop_reason')}"))
+        out.append(f"{s['screens']} screenshots of the open screen.")
+        if not s.get("end_confirmed") or (s.get("rewind_end_confirmed") is False):
+            out.append(f"Look at this: the end was not confirmed ({s.get('stop_reason')}).")
+        else:
+            out.append("Both ends of the list were reached.")
+        if s.get("unsettled"):
+            out.append(f"Look at this: {s['unsettled']} screenshot(s) taken while the screen was still changing.")
+    # Gaps from the log's own events, not the summary's count: before 0.1.1 the count included gaps the walk
+    # then went back over.
+    events = [json.loads(r["detail"]) for r in (rows or []) if r["action"] == "continuity_gap" and r.get("detail")]
+    retried = sum(1 for d in events if d.get("going_back_to_retry"))
+    left = len(events) - retried
+    if retried:
+        out.append(f"{retried} time(s) a screenshot shared nothing with the one before, so the walk went back and took "
+                   "that part again in smaller moves. The conversation pages say where.")
+    if left:
+        out.append(f"Look at this: {left} place(s) where two screenshots shared nothing and could not be taken again. "
+                   "Lines may be missing there; the conversation pages mark the place.")
     blank = sum(1 for x in shots if x["status"] == "blank")
     if blank:
         out.append(f"{blank} screenshots are black: the app blocks screenshots there. The text for those screens is in the conversation pages only.")
@@ -175,6 +210,8 @@ def build(export, out_name="report.pdf"):
         "right": ParagraphStyle("r", fontName=body, fontSize=9.5, leading=12, textColor=accent, alignment=TA_RIGHT,
                                 leftIndent=1.5 * inch, spaceAfter=3),
         "across": ParagraphStyle("a", fontName=body, fontSize=8, leading=10, textColor=muted, alignment=TA_CENTER, spaceAfter=3),
+        "note": ParagraphStyle("n", fontName=body, fontSize=9.5, leading=13, textColor=ink, backColor=colors.HexColor("#FFF3CD"),
+                               borderPadding=5, spaceBefore=4, spaceAfter=6),
         "cap": ParagraphStyle("c", fontName=body, fontSize=7.5, leading=9.5, textColor=muted, alignment=TA_CENTER),
     }
 
@@ -204,18 +241,25 @@ def build(export, out_name="report.pdf"):
               colWidths=[1.6 * inch, 5.2 * inch])
     t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
     story += [t, Paragraph("Result", st["h"])]
-    story += [Paragraph(esc(x), st["p"]) for x in summary_lines(manifest)]
+    story += [Paragraph(esc(x), st["p"]) for x in summary_lines(manifest, rows)]
+    for n in notes:   # the same notes the transcript page shows in yellow at its top, given the same weight here
+        story.append(Spacer(1, 4))
+        story.append(Paragraph(esc(n), st["note"]))
     story.append(Paragraph("How to read this report", st["h"]))
     for x in ("The screenshots are the record of what was on the screen. The text beside each is what the app "
               "reported for those screens, in reading order, each line once. That is usually the same text and is not "
               "guaranteed to be.",
-              "Lines on the left sat on the left of the screen, lines on the right on the right. Grey centred lines span "
-              "the screen, such as dates. Sent and received appear only for apps AppWalk has a profile for, with the "
-              "basis for it.",
+              "Lines on the left sat on the left of the screen, lines on the right on the right, as on the transcript "
+              "page. Grey lines are times and other text the app showed; centred ones spanned the screen, such as dates. "
+              "Sent and received appear only for apps AppWalk has a profile for, with the basis for it, in small grey "
+              "type under the line, with the app's own description where it says more than the line.",
               "A line in square brackets is the description the app gave an item with no text, such as a picture. "
               "A bold line is the name of who wrote the lines after it, where the app shows one.",
               "A code such as [U+1FAC2] is a character this report's font cannot draw, most often an emoji; look it up "
-              "by that code, or see the transcript page or the screenshot, which show it as reported.",
+              "by that code, or see the transcript page or the screenshot, which show it as reported. A code from "
+              "U+E000 to U+F8FF is in Unicode's private use area, which has no meaning of its own: only the app's own "
+              "font draws it, so the screenshot shows what it looked like. Invisible marks, such as the direction marks "
+              "around names and numbers, are left out here and kept in transcript.csv.",
               "Each screenshot is printed beside the lines first seen on it, and each line's tag, such as S12, names that "
               "screenshot. A screenshot the same as the one before it is printed once, with both numbers.",
               "This report is made from the export's files and is not in its hash chain. Its own SHA-256 is in "
@@ -223,8 +267,6 @@ def build(export, out_name="report.pdf"):
               "of the export."):
         story.append(Paragraph(esc(x), st["p"]))
         story.append(Spacer(1, 4))
-    for n in notes:
-        story.append(Paragraph(esc(n), st["small"]))
 
     # Conversation pages: each screenshot beside the lines first seen on it, so a picture or other media
     # is on the same page as the line that names it.
@@ -235,20 +277,31 @@ def build(export, out_name="report.pdf"):
         by_step.setdefault(str(r["first_seen_step"]), []).append(r)
 
     def line_para(r):
+        """One line as the transcript page shows it: on the side it sat, times and other lines in grey on
+        that same side, and under it the direction, the app's description where it adds something, and
+        whether it joined the screenshot before."""
         tag = f'<font size="7" color="#5F6B7A">S{r["first_seen_step"]}</font>'
-        label = " · ".join(x for x in (r["direction"], r["direction_basis"]) if x)
-        text = f"[{r['text']}]" if r["role"] == "described" else r["text"]
+        shown = f"[{r['text']}]" if r["role"] == "described" else r["text"]
+        text = esc(shown)
         if r["role"] == "described":
-            text = f"<i>{esc(text)}</i>"
-        else:
-            text = esc(text)
-        if r["role"] == "author":
-            return Paragraph(f"{strong(text, bold)} &nbsp;{tag}", st["cl"])
-        if r["role"] in ("time", "other") or r["side"] == "across":
-            return Paragraph(f"{text} &nbsp; {tag}", st["across"])
-        extra = f' <font size="7" color="#5F6B7A">· {esc(label)}</font>' if label else ""
+            text = f"<i>{text}</i>"
+        elif r["role"] == "author":
+            text = strong(text, bold)
+        elif r["role"] in ("time", "other"):
+            text = f'<font size="8" color="#5F6B7A">{text}</font>'
+        meta = [x for x in (r["direction"], r["direction_basis"]) if x]
+        desc = r.get("app_description") or ""
+        if desc and desc.strip() not in (r["text"].strip(), shown.strip()):
+            meta.append(desc)
+        if r["joined_to_previous_frame"] == "NO":
+            meta.append("NOT JOINED to the screenshot before: lines may be missing or repeated here")
+        elif r["joined_to_previous_frame"] == "by the screenshots":
+            meta.append("joined to the screenshot before by the pictures (no shared text)")
+        extra = f'<br/><font size="7" color="#5F6B7A">{esc(" · ".join(meta))}</font>' if meta else ""
+        if r["side"] == "across":
+            return Paragraph(f"{text} &nbsp; {tag}{extra}", st["across"])
         if r["side"] == "right":
-            return Paragraph(f"{text}{extra} &nbsp;{tag}", st["cr"])
+            return Paragraph(f"{text} &nbsp;{tag}{extra}", st["cr"])
         return Paragraph(f"{tag}&nbsp; {text}{extra}", st["cl"])
 
     by_entry = {r["entry_id"]: r for r in rows if r["action"] == "screenshot"}
@@ -302,15 +355,18 @@ def build(export, out_name="report.pdf"):
             # A screenshot is at most 3.9 in tall, so two rows and a heading fit a page; a long block of text continues below.
             img = Image(c["path"], width=2.3 * inch, height=3.9 * inch, kind="proportional")
             paras = [line_para(r) for r in mine]
-            first, rest = paras[:28], paras[28:]
-            t = Table([[first, [img, caption(c)]]], colWidths=[4.4 * inch, 2.5 * inch])
+            # A table row cannot break across pages, so the text beside a screenshot is cut by its measured
+            # height, not by a count of lines: a line with its grey note under it, in a wider font (DejaVu
+            # on Linux), is taller, and a fixed count made a row taller than the page (LayoutError).
+            chunks = by_height(paras, 4.4 * inch - 12, [8.3 * inch] + [9.0 * inch] * len(paras))
+            t = Table([[chunks[0], [img, caption(c)]]], colWidths=[4.4 * inch, 2.5 * inch])
             t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("ALIGN", (1, 0), (1, 0), "CENTER"),
                                    ("LINEABOVE", (0, 0), (-1, 0), 0.4, colors.HexColor("#D9DEE5")),
                                    ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
             story.append(KeepTogether([heading, t]) if heading else t)   # a heading never ends a page alone
             heading = None
-            for i in range(0, len(rest), 40):
-                more = Table([[rest[i:i + 40], Paragraph(f"S{c['step']}, continued", st["cap"])]], colWidths=[4.4 * inch, 2.5 * inch])
+            for part in chunks[1:]:
+                more = Table([[part, Paragraph(f"S{c['step']}, continued", st["cap"])]], colWidths=[4.4 * inch, 2.5 * inch])
                 more.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
                 story.append(more)
         if quiet:

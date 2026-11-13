@@ -50,7 +50,8 @@ class TeachDialog:
         tk.Label(right, text=f"Teach AppWalk {self.package}", font=("TkDefaultFont", 15, "bold"), bg=c["bg"], fg=c["ink"],
                  anchor="w").pack(fill="x")
         tk.Label(right, text="Click on the screenshot where each thing below is. Use the arrows to find a screenshot "
-                             "that shows it. Only the views you click are used; nothing is read from what they say.",
+                             "that shows it. The profile keeps which kind of view you clicked, not its words; the "
+                             "words are shown beside each step so you can check the click took the right thing.",
                  wraplength=360, justify="left", bg=c["bg"], fg=c["muted"], anchor="w").pack(fill="x", pady=(4, 10))
         self.step_labels = []
         for name, what, _ in teach.STEPS:
@@ -124,14 +125,20 @@ class TeachDialog:
                 text, colour = f"–  {name}: skipped", self.c["muted"]
             else:
                 where = T.side_of(v["bounds"], v["list_bounds"])
-                text, colour = f"✓  {name}: {v['rid'] or 'a view with no name'}, {where}", self.c["ok"]
+                said = (v.get("text") or (f"[{v['desc']}]" if v.get("desc") else "")).replace("\n", " ")
+                said = f' "{said[:30]}…"' if len(said) > 30 else (f' "{said}"' if said else "")
+                text, colour = f"✓  {name}:{said}, {v['rid'] or 'a view with no name'}, {where}", self.c["ok"]
             self.step_labels[i].configure(text=text, fg=colour)
         done = self.step >= len(teach.STEPS)
         self.skip_btn.configure(state="disabled" if done else "normal")
         self.back_btn.configure(state="normal" if self.step > 0 else "disabled")
         if done:
             self.profile, self.warnings = teach.make_profile(self.export, self.answers)
-            lines = teach.describe(self.profile) + [""] + self.warnings
+            try:
+                found = ["In this export it finds:"] + teach.preview(self.export, self.profile)
+            except Exception as e:  # noqa: BLE001 - the preview is a check; saving still works without it
+                found = [f"(could not try it on this export: {type(e).__name__})"]
+            lines = teach.describe(self.profile) + [""] + found + [""] + self.warnings
             self.summary.configure(text="This profile will be saved:\n" + "\n".join(lines))
             self.save_btn.configure(state="normal" if self.profile.get("message_ids") or self.profile.get("message_parent_ids") else "disabled")
         else:
@@ -145,12 +152,14 @@ class TeachDialog:
 
     def pick(self, x, y):
         """A click at (x, y) in screen pixels of the shown screenshot."""
-        view = teach.view_at(self.shots[self.shot][2], self.package, x, y)
+        name = teach.STEPS[self.step][0]
+        view = teach.view_at(self.shots[self.shot][2], self.package, x, y, text_only=teach.wants_text(name))
         if view is None:
-            self.found.configure(text="Nothing the app labelled is there. Click on the text or the picture itself.")
+            self.found.configure(text=("No text the app reported is there. Click on the words themselves, or Skip."
+                                       if teach.wants_text(name) else
+                                       "Nothing the app labelled is there. Click on the picture itself, or Skip."))
             return None
         view["_shot"] = self.shot
-        name = teach.STEPS[self.step][0]
         self.answers[name] = view
         self.found.configure(text="")
         self.step += 1

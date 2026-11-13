@@ -270,14 +270,24 @@ def build(export, profile_folder=None):
                 walks.append(current)
             elif r["action"] == "screenshot" and current is not None:
                 current["frames"].append((d["step"], r["entry_id"], r["screenshot"]["file"], d["tree_file"]))
+                current.setdefault("screen_step", {})[d.get("screen_in_this_walk")] = d["step"]
                 by_entry[r["entry_id"]] = d
+            elif r["action"] == "continuity_gap" and current is not None and d.get("going_back_to_retry"):
+                # The walker found this screen did not continue the one before, went back and came forward
+                # again in smaller moves. The screen it went back from is not part of the sequence.
+                current.setdefault("retried_screens", set()).add(d.get("before_screen"))
     rows, notes = [], []
     for w in walks:
         merged, unjoined, by_picture, prev_png = [], 0, 0, None
+        retried = {w.get("screen_step", {}).get(n) for n in w.get("retried_screens", set())} - {None}
+        set_aside = []
         for step, entry, png, tree in w["frames"]:
             frame = frame_lines(os.path.join(export, "trees", tree), package, profile)
             for x in frame:
                 x.update(step=step, png=png, joined=None)
+            if step in retried:
+                set_aside.append((step, frame))
+                continue
             before = {id(x) for x in merged}
             merged, shared = join(merged, frame, w["reveal"])
             if shared == 0 and frame:
@@ -294,6 +304,17 @@ def build(export, profile_folder=None):
             for x in merged:
                 if id(x) not in before:
                     x["joined"] = shared
+        for step, frame in set_aside:
+            held = {key(x) for x in merged}
+            alone = [x for x in frame if key(x) not in held]
+            tail = (f". {len(alone)} line(s) seen only on S{step} are listed after this walk's other lines" if alone
+                    else ", and every line on it was seen again on the screenshots after it")
+            notes.append(f"{w['item'] or '(the screen walked)'}: screenshot S{step} shared nothing with the one before, so "
+                         f"the walk went back and came forward again in smaller moves; S{step} is not used to order the "
+                         f"lines{tail}")
+            for x in alone:
+                x["joined"] = 0
+            merged = merged + alone
         if unjoined:
             notes.append(f"{w['item'] or '(the screen walked)'}: {unjoined} frame(s) shared no line with the one before; "
                          "lines may be missing or repeated there")
@@ -366,8 +387,10 @@ def write(export, profile_folder=None):
                        f"<div class='meta'>step {r['first_seen_step']}</div></td>")
             label = " · ".join(x for x in (r["direction"], r["direction_basis"]) if x)
             shown = f"[{r['text']}]" if r["role"] == "described" else r["text"]
+            # The app's description only where it says more than the line (a time's description is the time).
+            desc = r["app_description"] if r["app_description"].strip() not in (r["text"].strip(), shown.strip()) else ""
             out.append(f"<tr>{pic}<td class='{e(r['side'])} {e(r['role'])}'>{e(shown)}"
-                       f"<div class='meta'>{e(label)}{' · ' if label and r['app_description'] else ''}{e(r['app_description'])}"
+                       f"<div class='meta'>{e(label)}{' · ' if label and desc else ''}{e(desc)}"
                        f"{' · NOT JOINED to the frame before' if r['joined_to_previous_frame'] == 'NO' else ''}"
                        f"{' · joined to the frame before by the screenshots (no shared text)' if r['joined_to_previous_frame'] == 'by the screenshots' else ''}</div></td></tr>")
     out.append("</table>")
