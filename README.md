@@ -15,7 +15,8 @@ examiner is allowed to examine. There are two ways to use it:
 
 Both write a log of everything the tool did.
 
-For a step-by-step guide to the window, see [docs/QUICKSTART.md](docs/QUICKSTART.md).
+For the window step by step, see the [quick start](docs/QUICKSTART.md); for everything, the
+[user manual](docs/USER_MANUAL.md).
 
 It is for a device examined with the owner's consent or other lawful authority. It does not unlock
 anything, guess anything or get around any lock. When a lock screen, a password prompt or another

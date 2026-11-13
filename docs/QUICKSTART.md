@@ -1,9 +1,7 @@
 # AppWalk quick start
 
-Draft. Everything here was tried on an Android 15 emulator with made-up content, from macOS, Windows
-and Ubuntu. On a real phone, one Pixel 7a with Android 17, it was tried from macOS with WhatsApp and
-Signal, before the changes of 12 November (the new look, the 70% scroll, the PDF report). Mark what
-is wrong or missing as you go.
+The short version. The [user manual](USER_MANUAL.md) has the rest: installing on each system, how a
+walk works, the report, profiles, the command line, and what AppWalk was tried on.
 
 ## What AppWalk is
 
