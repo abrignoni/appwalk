@@ -2,8 +2,9 @@
 
 # AppWalk user manual
 
-For AppWalk 0.1.0-prototype, 12 November 2026. AppWalk is a prototype. What it was tried on is in
-section 14; anything not listed there has not been tried.
+For AppWalk 0.1.0, 12 November 2026, a first version. It was tested on an Android 15 emulator and on
+a Pixel 7a with Android 17; what exactly is in section 14, and anything not listed there has not been
+tried.
 
 Every picture in this manual comes from AppWalk driven against an Android 15 emulator with made-up
 texts: the window, the phone screens inside it, and the two report pages. None comes from a real
@@ -76,6 +77,22 @@ These Python packages are used when they are installed:
 Their licences are in `THIRD_PARTY_NOTICES.md`.
 
 ## 3. Get AppWalk and install what it uses
+
+### Ready-made builds
+
+A release on <https://github.com/abrignoni/appwalk/releases> carries builds for macOS, Windows and
+Linux, each for ARM64 and x64, with Python and everything else inside. Each pack holds two programs:
+**AppWalk**, the window, and **appwalk-cli**, the command line, with a README, the licence and the
+notices. Each build was checked by running it before it was attached: the window opened and reported
+what it loaded, and the command line checked and reported on a made-up export.
+
+- The builds are not signed yet. macOS blocks an unsigned app the first time: open it, then allow it
+  in **System Settings**, **Privacy & Security**, **Open Anyway**. Windows SmartScreen may warn about
+  an unknown publisher: **More info**, **Run anyway**.
+- adb is not inside: Android's licence for its SDK does not allow passing it on. Install Android's
+  SDK Platform-Tools once, as below.
+
+### From the source
 
 Get AppWalk from <https://github.com/abrignoni/appwalk>, with **Code**, **Download ZIP**, or with git:
 

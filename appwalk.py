@@ -15,7 +15,7 @@ It uses programs already on the phone (uiautomator, screencap, input) and instal
 It does not bypass any lock: when a lock or password prompt is in front it stops, or waits for the
 examiner to deal with it.
 
-Prototype. Tried on an Android 15 emulator only.
+Tested on an Android 15 emulator and on a Pixel 7a with Android 17; see the README.
 """
 import argparse
 import csv
@@ -33,7 +33,7 @@ import uuid
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
-VERSION = "0.1.0-prototype"
+VERSION = "0.1.0"
 # transcript.py sits beside this file. Python started with -I does not look there by itself.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 SCHEMA_VERSION = 3  # the KDL export schema this writes

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Seeds known data for the prototype on an EMULATOR: one Google Messages thread with numbered texts.
+"""Seeds known data for testing AppWalk on an EMULATOR: one Google Messages thread with numbered texts.
 
 Incoming texts are sent through the emulator console (adb emu sms send). Outgoing texts are typed and
 sent through the open thread. Every text carries a token (KD-A-001 ...) so it can be found again in

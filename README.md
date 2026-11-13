@@ -1,8 +1,9 @@
 <p align="center"><img src="assets/appwalk_256.png" width="128" height="128" alt="AppWalk logo: footprints walking down a phone screen"></p>
 
-# AppWalk (prototype)
+# AppWalk
 
-AppWalk is a prototype, tried on one Android 15 emulator and nothing else. The name is written AppWalk;
+AppWalk 0.1.0 is a first version. It was tested on an Android 15 emulator and on one real phone, a
+Pixel 7a with Android 17, with WhatsApp, Signal and Discord (see Tested). The name is written AppWalk;
 the repository, the command and the module are `appwalk`.
 
 It documents an Android app's content with screenshots, from a workstation, over adb, on a phone the
@@ -16,7 +17,8 @@ examiner is allowed to examine. There are two ways to use it:
 Both write a log of everything the tool did.
 
 For the window step by step, see the [quick start](docs/QUICKSTART.md); for everything, the
-[user manual](docs/USER_MANUAL.md).
+[user manual](docs/USER_MANUAL.md). Releases carry ready-made builds for macOS, Windows and Linux,
+each for ARM64 and x64; they are not signed yet, and adb is installed separately.
 
 It is for a device examined with the owner's consent or other lawful authority. It does not unlock
 anything, guess anything or get around any lock. When a lock screen, a password prompt or another
@@ -287,9 +289,15 @@ expected texts in the view trees without using view ids:
   that a text was in that step's picture, and the gap check has nothing to work with.
 - When screenshots come back black the command says so and exits with 2.
 
-Not tried: a real phone, WhatsApp, Signal, Telegram or any app that needs an account, a Flutter or
-game-engine app, any other Android version, a thread with media, rows that share a title,
-right-to-left layouts, a horizontal list.
+A real phone, 12 November 2026: a Pixel 7a with Android 17, the owner's own accounts, one conversation
+each in WhatsApp 2.26.44.90, Signal 8.35.2 and Discord 353.11 (Discord from the window). The owner
+read the three reports against their screenshots: order right, sent and received right after one
+fix (a reply's side, now taken from its bubble), pictures named where the app names them. Signal,
+offline, with the current settings: 26 screenshots in 175 s, each settled on the first try, export
+check passed; with the earlier settings, 60 screenshots in 449 s.
+
+Not tried: any other phone or Android version on a real phone, Telegram, a Flutter or game-engine
+app, rows that share a title, right-to-left layouts, a horizontal list.
 
 Unit tests use a made-up phone and need no device:
 
