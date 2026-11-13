@@ -185,6 +185,39 @@ class WalkTests(unittest.TestCase):
         self.assertIsNone(s["end_confirmed"])
         self.assertIn("cap of 3", s["stop_reason"])
 
+    def test_a_view_tree_that_cannot_be_read_ends_the_walk_with_an_export(self):
+        # As Instagram did on a Pixel 7a: after some screens uiautomator returns no tree. The walk used to
+        # end with a traceback and no manifest; it now stops, says why, and the export checks out.
+        class Stuck(FakePhone):
+            calls = 0
+
+            def tree_raw(self):
+                Stuck.calls += 1
+                if Stuck.calls > 12:
+                    raise RuntimeError("uiautomator returned no view tree: ERROR: could not get idle state.")
+                return super().tree_raw()
+        out, log, s = run(Stuck(count=80))
+        self.assertIn("did not answer as expected", s["stop_reason"])
+        self.assertGreater(s["screens"], 0)
+        self.assertIn("walk_error", [r["action"] for r in log.rows])
+        checks = appwalk.verify_export(out)
+        self.assertTrue(all(ok for _, _, ok in checks), checks)
+
+    def test_an_app_busy_at_the_top_is_walked_up_to_its_spinner(self):
+        # As Instagram offline: at the very top of a conversation a loading spinner keeps turning and the
+        # view tree cannot be read there. The walk steps back a little, takes that screen, and stops saying why.
+        class Spinner(FakePhone):
+            def tree_raw(self):
+                if self.offset == 0:
+                    raise RuntimeError("uiautomator returned no view tree: ERROR: could not get idle state.")
+                return super().tree_raw()
+        out, log, s = run(Spinner(count=60))
+        self.assertIn("loading indicator", s["stop_reason"])
+        self.assertFalse(s["end_confirmed"])
+        self.assertIn("app_busy_at_end", [r["action"] for r in log.rows])
+        self.assertEqual(texts_seen(out), {f"item {i:03d}" for i in range(1, 61)})   # the oldest item is still read
+        self.assertTrue(all(ok for _, _, ok in appwalk.verify_export(out)))
+
     def test_another_app_in_front_stops_the_walk_without_a_screenshot(self):
         out, log, s = run(FakePhone(front="com.example.other"))
         self.assertEqual(s["screens"], 0)
