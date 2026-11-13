@@ -230,13 +230,25 @@ def home_dir():
     return os.path.expanduser("~")
 
 
+def check_logo():
+    """The logo in the header and as the window icon; on Windows, ours and not CustomTkinter's."""
+    icon_ok = bool(getattr(root, "_appwalk_icons", None))
+    if sys.platform.startswith("win"):
+        # Set before CustomTkinter's own icon call, which it then skips (customtkinter 6.0.0, ctk_tk.py).
+        icon_ok = icon_ok and getattr(root, "_appwalk_ico", False) and getattr(root, "_iconbitmap_method_called", False)
+    note("logo in the header and as the window icon", getattr(app, "logo", None) is not None and icon_ok,
+         type(getattr(app, "logo", None)).__name__)
+
+
 def teach_only():
     note("window opened", True)
+    check_logo()
     yield from scenario_t()
 
 
 def quick():
     """Only the first two steps and scenario G, for a short rerun."""
+    check_logo()
     app.refresh_devices()
     match = [n for n in app.device_box["values"] if n.split()[0] == serial]
     note("phone listed", match)
@@ -279,6 +291,7 @@ def rows_only():
 
 
 def script():
+    check_logo()
     # Step 1
     app.refresh_devices()
     names = list(app.device_box["values"])
@@ -318,6 +331,7 @@ def script():
     app.rows_ok.configure(state="normal")
     app.rows_ok.invoke()
     yield lambda: app.shots >= 1 and getattr(app, "current_item", None)
+    note("the latest screenshot shows on the Run step", getattr(app, "thumb", None) is not None)
     picture("4_running")
     app.pause_btn.invoke()
     at = app.shots

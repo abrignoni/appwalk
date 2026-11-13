@@ -51,6 +51,15 @@ def save_settings(values):
     classic.save_settings(values)
 
 
+def plain_image(label, image):
+    """Puts a CTkImage, or a plain Tk PhotoImage when PIL.ImageTk is missing, on a CTkLabel. CustomTkinter
+    accepts the PhotoImage but warns that it will not scale; that is known and expected here."""
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        label.configure(image=image)
+
+
 if ctk is not None:
     class Label(ctk.CTkLabel):
         """A label that also takes the plain Tk names the shared code uses (fg for text colour)."""
@@ -120,7 +129,22 @@ if ctk is not None:
             self.style()
             head = ctk.CTkFrame(root, fg_color=CARD, corner_radius=0, border_width=0)
             head.pack(fill="x")
-            Label(head, text="AppWalk", font=self.f_title, text_color=INK).pack(side="left", padx=(24, 18), pady=16)
+            try:
+                from PIL import Image, ImageTk  # noqa: F401 - CTkImage needs ImageTk, which Ubuntu packs apart
+                im = Image.open(os.path.join(classic.ASSETS, "appwalk_256.png"))
+                self.logo = ctk.CTkImage(light_image=im, dark_image=im, size=(36, 36))
+            except ImportError:
+                try:
+                    self.logo = tk.PhotoImage(master=root, file=os.path.join(classic.ASSETS, "appwalk_32.png"))
+                except tk.TclError:
+                    self.logo = None
+            except OSError:
+                self.logo = None
+            if self.logo is not None:
+                logo_label = Label(head, text="")
+                plain_image(logo_label, self.logo)
+                logo_label.pack(side="left", padx=(22, 0), pady=12)
+            Label(head, text="AppWalk", font=self.f_title, text_color=INK).pack(side="left", padx=(10 if self.logo else 24, 18), pady=16)
             self.step_labels = []
             for i, name in enumerate(classic.STEPS):
                 lab = Label(head, text=f"{i + 1}  {name}", font=self.f_body, text_color=MUTED)
@@ -320,13 +344,21 @@ if ctk is not None:
                 return
             w, h = max(40, self.picture.winfo_width() - 12), max(40, self.picture.winfo_height() - 12)
             try:
-                from PIL import Image
+                from PIL import Image, ImageTk  # noqa: F401 - CTkImage needs ImageTk, which Ubuntu packs apart
                 im = Image.open(path)
                 scale = min(w / im.width, h / im.height)
                 self.thumb = ctk.CTkImage(light_image=im, dark_image=im, size=(max(1, int(im.width * scale)), max(1, int(im.height * scale))))
-            except (ImportError, OSError):
+            except ImportError:
+                # Tk reads PNG itself; shrink by a whole factor to fit.
+                try:
+                    img = tk.PhotoImage(master=self.root, file=path)
+                except tk.TclError:
+                    return
+                factor = max(1, -(-img.width() // w), -(-img.height() // h))
+                self.thumb = img.subsample(factor)
+            except OSError:
                 return
-            self.picture.configure(image=self.thumb)
+            plain_image(self.picture, self.thumb)
 
         def page_result(self):
             page = ctk.CTkFrame(self.body, fg_color="transparent")
@@ -367,6 +399,7 @@ if ctk is not None:
 
         def dialog(self, title, heading, color=INK):
             win = ctk.CTkToplevel(self.root, fg_color=CARD)
+            classic.windows_icon(win)
             win.title(title)
             win.transient(self.root)
             self.raise_dialog(win)

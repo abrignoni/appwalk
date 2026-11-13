@@ -1117,8 +1117,10 @@ def main(argv=None):
     if a.cmd == "teach":
         import tkinter as tk
         import teach_gui
+        import appwalk_gui_classic
         root = tk.Tk()
         root.withdraw()
+        appwalk_gui_classic.window_icon(root)
         dlg = teach_gui.TeachDialog(root, a.export, on_saved=print)
         dlg.win.protocol("WM_DELETE_WINDOW", root.destroy)
         dlg.win.bind("<Destroy>", lambda e: e.widget is dlg.win and root.after(10, root.destroy))

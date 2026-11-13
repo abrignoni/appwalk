@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/appwalk_256.png" width="128" height="128" alt="AppWalk logo: footprints walking down a phone screen"></p>
+
 # AppWalk (prototype)
 
 AppWalk is a prototype, tried on one Android 15 emulator and nothing else. The name is written AppWalk;
@@ -90,11 +92,12 @@ It needs a Python whose Tk is 8.6; on macOS the python.org 3.14 build has Tk 9, 
 refuses to start there.
 
 Driven through its own controls against an Android 15 emulator (`devtools/drive_gui.py`), 12 November
-2026: 36 of 36 checks with the CustomTkinter window on macOS (Python 3.12, CustomTkinter 5.2.2), Ubuntu
-26.04 (Python 3.14) and Windows 11 (Python 3.11), the last two on ARM64 with CustomTkinter 6.0.0, and
-the 6 checks of the teach step with the plain window on macOS. The checks cover each step, Pause, Stop,
-the lock dialog with a typed code, the question about a different app, the PDF report, Check this
-export, Copy, the theme switch, and teaching a profile by clicks.
+2026: 38 of 38 checks with the CustomTkinter window on macOS (Python 3.12, CustomTkinter 5.2.2), Ubuntu
+26.04 (Python 3.14, system Pillow without ImageTk) and Windows 11 (Python 3.11), the last two on ARM64
+with CustomTkinter 6.0.0, and the teach checks with the plain window on macOS. The checks cover each
+step, Pause, Stop, the lock dialog with a typed code, the question about a different app, the
+screenshot on the Run step, the PDF report, Check this export, Copy, the theme switch, teaching a
+profile by clicks, and the logo in the header and as the window icon.
 
 Needs Python 3 and adb. Pillow, ReportLab and CustomTkinter are optional; [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 says what each adds and what happens without it.

@@ -51,6 +51,31 @@ def system_theme():
         pass
     return "light"
 STEPS = ["Phone", "What to document", "Run", "Result"]
+ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+
+
+def window_icon(root):
+    """The AppWalk logo as the icon of every window (dock, taskbar, title bar) instead of Python's own.
+    A missing or unreadable file leaves the default icon: the window works the same without it."""
+    try:
+        icons = [tk.PhotoImage(master=root, file=os.path.join(ASSETS, f"appwalk_{s}.png")) for s in (256, 64, 32)]
+        root.iconphoto(True, *icons)
+        root._appwalk_icons = icons   # Tk drops an image nothing in Python holds
+        windows_icon(root)
+    except (tk.TclError, OSError):
+        pass
+
+
+def windows_icon(win):
+    """On Windows, the .ico through iconbitmap as well: CustomTkinter puts its own icon on every window
+    about 200 ms after it opens unless iconbitmap was called first (customtkinter 6.0.0, ctk_tk.py and
+    ctk_toplevel.py)."""
+    if sys.platform.startswith("win"):
+        try:
+            win.iconbitmap(os.path.join(ASSETS, "appwalk.ico"))
+            win._appwalk_ico = True   # Tk's "wm iconbitmap" query answers "" on Windows, so this says it was set
+        except tk.TclError:
+            pass
 SETTINGS = os.path.join(os.path.expanduser("~"), ".appwalk", "settings.json")
 
 
@@ -75,6 +100,7 @@ class App:
     def __init__(self, root):
         self.root = root
         root.title("AppWalk")
+        window_icon(root)
         root.minsize(900, 680)
         root.configure(bg=BG)
         self.events = queue.Queue()
@@ -120,7 +146,12 @@ class App:
         # ---- header: the four steps ----
         head = tk.Frame(root, bg=CARD, highlightthickness=1, highlightbackground=LINE)
         head.pack(fill="x")
-        tk.Label(head, text="AppWalk", font=self.f_title, bg=CARD, fg=INK).pack(side="left", padx=20, pady=14)
+        try:
+            self.logo = tk.PhotoImage(master=root, file=os.path.join(ASSETS, "appwalk_32.png"))
+            tk.Label(head, image=self.logo, bg=CARD).pack(side="left", padx=(18, 0), pady=14)
+        except tk.TclError:
+            self.logo = None
+        tk.Label(head, text="AppWalk", font=self.f_title, bg=CARD, fg=INK).pack(side="left", padx=(10 if self.logo else 20, 20), pady=14)
         self.step_labels = []
         for i, name in enumerate(STEPS):
             lab = tk.Label(head, text=f"{i + 1}  {name}", font=self.f_body, bg=CARD, fg=MUTED, padx=14, pady=6)

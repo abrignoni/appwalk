@@ -10,6 +10,10 @@ AppWalk bundles no third-party code. It uses these packages when they are instal
 | ReportLab 4.4.6 (ReportLab Inc.) | `report.pdf` | BSD (the LICENSE file in the wheel) | no `report.pdf`; the rest of the export is written, and the result says why the report is missing |
 | Pillow 12.3.0 | telling black screenshots apart, comparing two screenshots to see that the screen had settled, the picture on the Run step, and the pictures in `report.pdf` | MIT-CMU | black frames are not flagged, the view tree is read twice per step instead, the CustomTkinter window's Run step shows no picture (the plain window still shows a smaller one), and there is no `report.pdf` |
 
+On Ubuntu, the system Pillow (python3-pil) comes without its Tk part, PIL.ImageTk, which is in the
+separate python3-pil.imagetk package. Without it the CustomTkinter window shows the logo and the latest
+screenshot through Tk's own PNG support instead, at a fixed size.
+
 Other versions were not tried, except CustomTkinter 5.2.2, which also passed the window checks on
 macOS. On Ubuntu and Windows the window was tested with CustomTkinter 6.0.0 and ReportLab 4.4.6;
 Pillow there was 12.1.1 (Ubuntu) and 13.0.0 (Windows).
