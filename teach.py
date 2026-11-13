@@ -56,10 +56,17 @@ def package_of(export):
         return json.load(f)["apps_under_test"][0]
 
 
-def view_at(tree_path, package, x, y):
+def wants_text(name):
+    """Messages, times and names are text: those steps take only a view that has text. A picture takes a
+    view with a description too. (A time drawn over a photo sits inside the photo's views, which carry a
+    description and no text; without this a click a little off the time picked the photo.)"""
+    return name in ("sent", "received", "time", "author")
+
+
+def view_at(tree_path, package, x, y, text_only=False):
     """What the app reported at the point (x, y) of the screenshot (screen pixels, as in the tree's bounds):
-    the smallest view inside the list there that has text or a description, with its ancestors up to the
-    list. None when the point is outside the list or on nothing labelled."""
+    the smallest view inside the list there that has text (or, unless text_only, a description), with its
+    ancestors up to the list. None when the point is outside the list or on nothing labelled."""
     root = T.ET.parse(tree_path).getroot()
     node, cb = T.container(root, package)
     if node is None:
@@ -70,7 +77,7 @@ def view_at(tree_path, package, x, y):
         b = T.box(n)
         if n is node or not b or not (b[0] <= x < b[2] and b[1] <= y < b[3]):
             continue
-        if not (n.get("text") or n.get("content-desc")):
+        if not (n.get("text") or (n.get("content-desc") and not text_only)):
             continue
         area = (b[2] - b[0]) * (b[3] - b[1])
         if best is None or area < best[0]:
@@ -120,7 +127,13 @@ def make_profile(export, answers, now=None):
     """answers: {step name: view from view_at, or None if skipped}. Returns (profile, warnings)."""
     app = package_of(export)
     warnings, prof = [], {"package": app["package"]}
-    msgs = [v for k, v in answers.items() if k in ("sent", "received") and v]
+    answers = dict(answers)
+    for k in ("sent", "received", "time", "author"):
+        v = answers.get(k)
+        if v and not v.get("text"):
+            warnings.append(f"The {k} click was on something with no text (a picture or an icon), so it is left out.")
+            answers[k] = None
+    msgs =[v for k, v in answers.items() if k in ("sent", "received") and v]
     message_ids, parent_ids, bubbles = [], [], []
     for v in msgs:
         if v["rid"]:
@@ -184,6 +197,28 @@ def make_profile(export, answers, now=None):
     if not prof["message_ids"] and not prof.get("message_parent_ids"):
         warnings.insert(0, "No message was marked, so this profile would not find any messages.")
     return prof, warnings
+
+
+def preview(export, profile):
+    """What the profile would find in this export, before it is saved: per role, how many lines and one
+    example. A role with lines but no text, or with far more lines than expected, shows a wrong click."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        save(profile, d)
+        rows, _, _ = T.build(export, d)
+    out = []
+    for role, name in (("message", "Messages"), ("time", "Times"), ("author", "Author names"), ("described", "Pictures")):
+        got = [r for r in rows if r["role"] == role]
+        if not got:
+            continue
+        sample = next((r["text"] for r in got if r["text"].strip()), "")
+        sample = (sample[:40] + "…") if len(sample) > 40 else sample
+        line = f"{name}: {len(got)} lines"
+        if role == "message":
+            n = {d: sum(1 for r in got if r["direction"] == d) for d in ("sent", "received")}
+            line += f" ({n['sent']} sent, {n['received']} received)"
+        out.append(line + (f', for example "{sample}"' if sample else ", none with text"))
+    return out
 
 
 def save(profile, folder=None):

@@ -210,8 +210,13 @@ def scenario_t():
     dlg.show_shot(i)
     note("T: a click names the view under it", dlg.pick(*xy) is not None and dlg.answers["sent"]["rid"] == "message_text")
     note("T: a click outside the list is refused and uses up no step", dlg.pick(2, 2) is None and dlg.step == 2)
+    shown = dlg.step_labels[0].cget("text")
+    note("T: each pick reads back the text it took", '"' in shown and "message_text" in shown, shown.split(":")[0])
     for _ in range(3):
         dlg.skip()
+    summary = dlg.summary.cget("text")
+    note("T: before saving, what the profile finds in this export", "In this export it finds:" in summary
+         and "Messages:" in summary, summary.split("In this export it finds:")[-1].strip().split("\n")[0][:60])
     picture("12_teach", dlg.win)
     prof = dlg.profile
     note("T: the profile from the clicks", prof.get("message_ids") == ["message_text"]
@@ -222,7 +227,8 @@ def scenario_t():
     saved = os.path.join(folder, pkg + ".json")
     rows, notes, _ = transcript.build(copy)
     note("T: saved in the test folder and used for the transcript", os.path.exists(saved) and "taught on this computer" in notes[0])
-    note("T: the result page says what was made", "Profile saved" in app.result_text.get("1.0", "end"),
+    said = app.result_text.get("1.0", "end")
+    note("T: the result page says what was made", "Profile saved" in said and "report.pdf made again" in said,
          dlg.result.replace(home_dir(), "~"))
 
 

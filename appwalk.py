@@ -368,7 +368,7 @@ class Walker:
 
     def new_summary(self):
         return {"item": self.item, "screens": 0, "scrolls": 0, "rewind_scrolls": 0, "rewind_end_confirmed": None,
-                "end_confirmed": None, "gaps": 0, "unsettled": 0, "blank": 0, "pauses": 0, "stop_reason": None}
+                "end_confirmed": None, "gaps": 0, "gaps_retried": 0, "unsettled": 0, "blank": 0, "pauses": 0, "stop_reason": None}
 
     def add(self, kind, action, detail=None, **f):
         """A log row carrying the app and, when the tool opened it from a list, the item being walked."""
@@ -508,17 +508,20 @@ class Walker:
                 unchanged = 0
                 if joined is not None and not joined["joined"]:
                     # Nothing shows that this frame continues the one before: content between them may be missing.
-                    s["gaps"] += 1
                     retry = fraction > 0.08
                     self.add("system_event", "continuity_gap", {"after_screen": s["screens"] - 1, "before_screen": s["screens"],
                                                                 "going_back_to_retry": retry, "checked_by": joined["by"]})
                     if retry:
-                        # Go back by the distance just scrolled and come forward again in smaller moves.
+                        # Go back by the distance just scrolled and come forward again in smaller moves. The
+                        # frame before the gap stays the one to compare with, so the retry has to join it; a
+                        # retry that still does not join is a gap. (In 0.1.0 the comparison was dropped
+                        # here and the gap was counted even when the retry closed it.)
+                        s["gaps_retried"] += 1
                         self.scroll(tree, fraction, reverse=True)
                         fraction = max(0.08, fraction / 2)
                         self.sleep(self.settle_s)
-                        prev_fp, prev_labels, prev_png = None, None, None
                         continue
+                    s["gaps"] += 1
             if s["screens"] >= self.max_screens:
                 s["stop_reason"] = f"cap of {self.max_screens} screens reached; the end was not confirmed"
                 break
@@ -1070,7 +1073,8 @@ def run_job(serial, package, out, scenario, device_label, mode="screen", reveal=
         summary = walker.run()
         ok = clean(summary, rewind)
         lines = [f"Screens {summary['screens']}, scrolls {summary['scrolls']} (plus {summary['rewind_scrolls']} to reach the far end), "
-                 f"gaps {summary['gaps']}, blank {summary['blank']}, unsettled {summary['unsettled']}. "
+                 f"gaps {summary['gaps']} (plus {summary.get('gaps_retried', 0)} closed by going back and taking them again), "
+                 f"blank {summary['blank']}, unsettled {summary['unsettled']}. "
                  f"Far end confirmed: {summary['rewind_end_confirmed']}. Stopped: {summary['stop_reason']}"]
     else:
         lw = ListWalk(walker, item_reveal=item_reveal, capture_list=capture_list)

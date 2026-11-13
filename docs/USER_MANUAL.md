@@ -292,15 +292,23 @@ seen on it. A photo is therefore on the same page as the line that names it.
 
 - Each line ends in a tag such as S12: the screenshot it was first seen on, which is the one beside
   it.
-- Lines on the left sat on the left of the screen, lines on the right on the right. Grey centred lines
-  span the screen, such as dates.
-- "sent" and "received" appear only for apps AppWalk has a profile for, and each says on what basis:
-  "the app's own description" when the app said so itself, or "side of the screen (inferred)".
+- Lines on the left sat on the left of the screen, lines on the right on the right, as on the
+  transcript page. Grey lines are times and other text the app showed, on the side they sat; centred
+  ones spanned the screen, such as dates.
+- Under a line, in small grey type: "sent" or "received" with its basis, the app's own description
+  where it says more than the line, and how the line joined the screenshot before (see the transcript,
+  below). "sent" and "received" appear only for apps AppWalk has a profile for: "the app's own
+  description" when the app said so itself, or "side of the screen (inferred)".
+- The notes in yellow (which profile was used, and any place the walk went back or a gap) are the
+  same as at the top of the transcript page.
 - A line in square brackets is the description the app gave an item with no text, such as a picture.
   It can hold more than the screenshot shows: in Discord, an image's address.
 - A bold line is the name of who wrote the lines after it, where the app shows names (Discord).
 - A code such as [U+1FAC2] is a character the report's font cannot draw, most often an emoji. The
-  transcript page and the screenshot show it as it was reported.
+  transcript page and the screenshot show it as it was reported. A code from U+E000 to U+F8FF is in
+  Unicode's private use area and has no meaning of its own: only the app's font draws it (Signal puts
+  one before call events), so look at the screenshot. Invisible marks, such as the direction marks
+  Android puts around names and numbers, are left out of the report and kept in `transcript.csv`.
 - Screenshots on which no new line was seen, such as the checks at either end of a conversation,
   follow its text, three to a row.
 - A screenshot that came back the same as the one before it is printed once, with both S-numbers.
@@ -384,13 +392,18 @@ for. Click on:
 4. a picture or other attachment, if the app shows one,
 5. the name of who wrote a message, if the app shows names.
 
-Each click is boxed on the screenshot, and the list on the right says which view was there and on
-which side. **Skip this one** when there is nothing like it; **Back** undoes the last click. A click
-outside the list, or on nothing the app labelled, is refused and uses up no step.
+Each click is boxed on the screenshot, and the list on the right shows the words the click took, which
+view was there and on which side. Check the words: they should be the message, the time or the name
+you meant. **Skip this one** when there is nothing like it; **Back** undoes the last click. A click
+outside the list, or on nothing the app labelled, is refused and uses up no step. For a message, a
+time or a name, a click on something with no text (a picture, or the blurred placeholder an app shows
+behind a time drawn over a photo) is refused too; click on the words themselves.
 
-Then the window says, in plain words, what the profile will do, with any warning. For example: the
-sent and the received message are on the same side, so the app shows one column and no message will
-be called sent or received.
+Then the window says, in plain words, what the profile will do, and what it finds in this export: how
+many messages (sent and received), times, names and pictures, each with an example. A count that looks
+wrong, such as as many names as there are pictures, is a wrong click: use **Back**. Any warning is
+below. For example: the sent and the received message are on the same side, so the app shows one
+column and no message will be called sent or received.
 
 **Save and make the report again** saves the profile and makes the transcript and the report of this
 export again with it. The Result step then says how many messages were found, and how many sent and
@@ -406,7 +419,8 @@ What a click gives:
 - For a picture, the outermost named view with a description, so a picture is one line however deeply
   the app nests it.
 
-Only the views you click are used. AppWalk does not read what the messages say to make the profile.
+The profile keeps which kind of view you clicked, not its words; the words are only shown so you can
+check the click.
 A click cannot teach a wording: in Google Messages, the "Texting with" line at the top of each
 conversation comes out as a message with no direction, where the profile that ships with AppWalk
 leaves it out by its wording.
@@ -433,8 +447,11 @@ What AppWalk does on the phone, in the order it does it. The log has a row for e
 4. **A join.** Two screenshots continue each other when they share a line of text. A shared
    description does not count: labels such as a delivery tick or "Photo" repeat on many bubbles. With
    no shared text, the two screenshots are compared and must clearly overlap. Otherwise AppWalk logs
-   a gap, goes back and comes forward in smaller moves. Each screenshot's log row says how it was
-   joined to the one before.
+   it, goes back and comes forward in smaller moves, and the next screenshot has to join the one
+   before the miss. Only when the smallest move still does not join is it counted as a gap. Each
+   screenshot's log row says how it was joined to the one before. The transcript leaves out of its
+   order a screenshot the walk went back from, and says so in a note; a line seen only there is listed
+   at the end. (In 0.1.0 a miss the walk went back over was still counted as a gap.)
 5. **The end.** It stops when two scrolls in a row change nothing, at the cap of screenshots, or when
    it is blocked. When every item looks alike to the view tree and a scroll moves by whole items, the
    tree is the same after the scroll; the screenshots are then compared, and a clear shift counts as
