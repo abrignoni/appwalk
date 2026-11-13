@@ -136,7 +136,17 @@ class AdbDevice:
 
     def tree_raw(self):
         """The view tree of the window in front, written to the terminal so no file is left on the phone."""
-        raw = self.adb("exec-out", "uiautomator", "dump", "/dev/tty", timeout=90)
+        # uiautomator reads the tree only once the app is idle. An app animating something, such as the
+        # spinner Instagram shows at the top of a conversation while it tries to load older messages (and
+        # cannot, offline), is not idle until the animation stops: "ERROR: could not get idle state." A short
+        # animation ends, so the read is tried again for 45 s. Instagram's offline spinner on a Pixel 7a
+        # (13 November 2026) outlasted two minutes; the walk handles that case by stepping back from it.
+        deadline = time.monotonic() + 45
+        while True:
+            raw = self.adb("exec-out", "uiautomator", "dump", "/dev/tty", timeout=90)
+            if b"could not get idle state" not in raw[:200] or time.monotonic() > deadline:
+                break
+            time.sleep(3)
         end = raw.rfind(b"</hierarchy>")
         if end < 0:
             raise RuntimeError("uiautomator returned no view tree: " + raw[:200].decode("utf-8", "replace"))
@@ -460,6 +470,16 @@ class Walker:
         """Walks the screen in front from one end to the other. `item` names it when the tool opened it from
         a list. With capture off nothing is saved: the trees are only handed to `on_tree` (used to read a
         list's rows without keeping pictures of it)."""
+        try:
+            return self._run(item, reveal, capture, on_tree, rewind)
+        except RuntimeError as e:
+            # The phone stopped answering as expected (no view tree, no screenshot). The walk ends here with
+            # what it has, and says why, so the export is still written and checkable.
+            self.summary["stop_reason"] = f"stopped: the phone did not answer as expected ({e}); the end was not reached"
+            self.add("system_event", "walk_error", {"error": str(e)[:300]})
+            return self.finish()
+
+    def _run(self, item, reveal, capture, on_tree, rewind):
         self.item = item
         if reveal:
             self.reveal = reveal
@@ -473,6 +493,7 @@ class Walker:
         if do_rewind and not self.go_to_far_end():
             return self.finish()
         prev_fp, prev_labels, prev_png, unchanged, fraction = None, None, None, 0, self.fraction
+        prev_tree = None
         while True:
             waited = self.pause_gate()
             if waited:
@@ -480,7 +501,29 @@ class Walker:
             if self.should_stop():
                 s["stop_reason"] = "stopped by the examiner; the end was not reached"
                 break
-            tree, png, stamp, attempt = self.settled_capture(capture)
+            busy_end = False
+            try:
+                tree, png, stamp, attempt = self.settled_capture(capture)
+            except RuntimeError as e:
+                # An app that keeps animating at this end of the list (Instagram's spinner, trying to load older
+                # messages it cannot get offline) never lets uiautomator read the tree. Step back a little, so
+                # the spinner is off the screen and still, and take that screen as the last one.
+                if "idle state" not in str(e) or prev_tree is None:
+                    raise
+                self.add("system_event", "app_busy_at_end", {"after_screen": s["screens"], "error": str(e)[:200]})
+                # The smallest step that lets the tree be read, so as little as possible of the oldest content
+                # goes off the screen: 5% of the list, then 10% more, then 20% more. (Instagram, Pixel 7a: three
+                # steps of 5% were not enough; about 500 px, a quarter of the list, was.)
+                for n, step in enumerate((0.05, 0.10, 0.20)):
+                    self.scroll(prev_tree, step, reverse=True)
+                    self.sleep(self.settle_s)
+                    try:
+                        tree, png, stamp, attempt = self.settled_capture(capture)
+                        break
+                    except RuntimeError as again:
+                        if "idle state" not in str(again) or n == 2:
+                            raise
+                busy_end = True
             if png is None:
                 if self.blocked(tree):
                     continue
@@ -497,6 +540,13 @@ class Walker:
                 on_tree(tree)
             if capture:
                 self.save(tree, png, stamp, attempt, fp, same, overlap, len(labels), joined)
+            prev_tree = tree
+            if busy_end:
+                s["end_confirmed"] = False
+                s["stop_reason"] = ("the app kept showing a loading indicator at this end of the list, so its view tree "
+                                    "could not be read there; the walk stopped just short of it. The app may hold more "
+                                    "it could not load (for example offline); the last screenshot shows that end")
+                break
 
             if same:
                 unchanged += 1

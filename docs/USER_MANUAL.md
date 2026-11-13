@@ -456,6 +456,12 @@ What AppWalk does on the phone, in the order it does it. The log has a row for e
    it is blocked. When every item looks alike to the view tree and a scroll moves by whole items, the
    tree is the same after the scroll; the screenshots are then compared, and a clear shift counts as
    a move, so such a list is not taken for its end.
+   Android reads a view tree only once the app is still. Offline, Instagram keeps a loading spinner
+   turning at the top of a conversation, trying to load older messages, so the tree there cannot be
+   read. AppWalk waits, then steps back a little at a time until the screen can be read (about a
+   quarter of the list on a Pixel 7a), takes that screen as the last one, and says why it stopped.
+   The run is marked not complete: the app may hold older messages it could not load, and the top of
+   the last screen is in the screenshot but not in the transcript.
 6. **The end, checked.** Before calling an end confirmed, it scrolls a little the other way: "nothing
    moved" can also mean the swipe was not taken. If the screen does not move either way, the result
    says the end is not confirmed.
