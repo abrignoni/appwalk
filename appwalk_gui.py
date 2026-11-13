@@ -549,6 +549,7 @@ def main():
     root.title("AppWalk")
     app = App(root)
     root.protocol("WM_DELETE_WINDOW", app.close)
+    classic.smoke_check(root, app, "CustomTkinter")
     root.mainloop()
 
 

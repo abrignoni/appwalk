@@ -5,6 +5,10 @@
 For AppWalk 0.1.0-prototype, 12 November 2026. AppWalk is a prototype. What it was tried on is in
 section 14; anything not listed there has not been tried.
 
+Every picture in this manual comes from AppWalk driven against an Android 15 emulator with made-up
+texts: the window, the phone screens inside it, and the two report pages. None comes from a real
+person's phone.
+
 ## Contents
 
 1. [What AppWalk is](#1-what-appwalk-is)
@@ -556,6 +560,10 @@ screenshots, and say in `checked_with` what it was checked with.
 
 - **No phone in the list.** Check the cable and the USB debugging prompt on the phone, then **Look
   again**. If the window says adb could not be run, install the platform tools (section 3).
+- **adb is installed but AppWalk does not find it.** A program opened from the Finder or the Start
+  menu does not get a terminal's PATH. AppWalk also looks where adb is usually installed: Homebrew,
+  Android Studio's SDK folder, `ANDROID_HOME` and `ANDROID_SDK_ROOT`. If yours is elsewhere, set
+  `APPWALK_ADB` to the full path of adb (adb.exe on Windows).
 - **The window does not start on a Mac.** Use `python3.12`.
 - **AppWalk says a different app is in front when you press Start.** A permission prompt, a system
   dialog or another app is on the phone's screen. Choose **Cancel**, clear it on the phone, and start

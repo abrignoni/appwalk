@@ -86,9 +86,34 @@ def verify_chain(rows):
 
 # ---- The phone, through adb ----
 
+
+def find_adb():
+    """The adb to run. A program opened from the Finder or the Start menu does not get the PATH a terminal
+    has, so after the PATH (and APPWALK_ADB, if set) the places adb is usually installed are tried:
+    Homebrew, the Android SDK of Android Studio, ANDROID_HOME and ANDROID_SDK_ROOT. "adb" when none is
+    found, so the error says adb could not be run."""
+    import shutil
+    if os.environ.get("APPWALK_ADB"):
+        return os.environ["APPWALK_ADB"]
+    found = shutil.which("adb")
+    if found:
+        return found
+    name = "adb.exe" if os.name == "nt" else "adb"
+    home = os.path.expanduser("~")
+    places = [os.path.join(os.environ.get(v, ""), "platform-tools", name) for v in ("ANDROID_HOME", "ANDROID_SDK_ROOT") if os.environ.get(v)]
+    places += ["/opt/homebrew/bin/adb", "/usr/local/bin/adb",
+               os.path.join(home, "Library", "Android", "sdk", "platform-tools", name),
+               os.path.join(home, "Android", "Sdk", "platform-tools", name),
+               os.path.join(os.environ.get("LOCALAPPDATA", ""), "Android", "Sdk", "platform-tools", name),
+               "/usr/bin/adb"]
+    for p in places:
+        if p and os.path.isfile(p) and os.access(p, os.X_OK):
+            return p
+    return "adb"
+
 class AdbDevice:
-    def __init__(self, serial, adb="adb"):
-        self.serial, self.adb_path = serial, adb
+    def __init__(self, serial, adb=None):
+        self.serial, self.adb_path = serial, adb or find_adb()
 
     def adb(self, *args, timeout=60, stdin=None):
         p = subprocess.run([self.adb_path, "-s", self.serial, *args], capture_output=True, timeout=timeout,
@@ -960,8 +985,9 @@ def ask_examiner(allow_secret):
     return ask
 
 
-def list_devices(adb="adb"):
+def list_devices(adb=None):
     """[(serial, state, description)] as adb lists them."""
+    adb = adb or find_adb()
     p = subprocess.run([adb, "devices", "-l"], capture_output=True, stdin=subprocess.DEVNULL, timeout=30)
     out = []
     for line in p.stdout.decode("utf-8", "replace").splitlines()[1:]:
@@ -972,7 +998,7 @@ def list_devices(adb="adb"):
     return out
 
 
-def device_facts(serial, adb="adb"):
+def device_facts(serial, adb=None):
     """What the examiner should see before a run and what the log keeps before and after it: model,
     Android version, battery, airplane mode, Wi-Fi, and how far the phone's clock is from this computer's.
     Each value is as the phone reports it; None when it did not answer."""
@@ -980,6 +1006,7 @@ def device_facts(serial, adb="adb"):
               "settings get global airplane_mode_on; settings get global wifi_on; settings get system screen_off_timeout; "
               "dumpsys battery | grep -m1 level; date +%s%N")
     before = time.time()
+    adb = adb or find_adb()
     p = subprocess.run([adb, "-s", serial, "shell", script], capture_output=True, stdin=subprocess.DEVNULL, timeout=30)
     after = time.time()
     lines = [x.strip() for x in p.stdout.decode("utf-8", "replace").splitlines()]
@@ -993,8 +1020,9 @@ def device_facts(serial, adb="adb"):
             "phone_clock_minus_computer_s": None if phone_ms is None else round(phone_ms / 1000 - (before + after) / 2, 1)}
 
 
-def app_in_front(serial, adb="adb"):
+def app_in_front(serial, adb=None):
     """Package of the app in front on the phone, from the focused window, or None."""
+    adb = adb or find_adb()
     p = subprocess.run([adb, "-s", serial, "shell", "dumpsys", "window"], capture_output=True, stdin=subprocess.DEVNULL, timeout=30)
     m = re.search(r"mCurrentFocus=Window\{[^}]*\s([A-Za-z0-9_.]+)/", p.stdout.decode("utf-8", "replace"))
     return m.group(1) if m else None

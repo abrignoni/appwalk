@@ -928,6 +928,32 @@ def problems(w):
     return "; ".join(p) or "the end was not confirmed"
 
 
+
+def smoke_check(root, app, kind):
+    """For a packaged build: when APPWALK_SMOKE names a file, the window opens, writes there what it
+    loaded, and closes. Nothing else changes. A build that only finished is no proof that it runs."""
+    path = os.environ.get("APPWALK_SMOKE")
+    if not path:
+        return
+
+    def report():
+        try:
+            import shutil
+            facts = {"window": kind, "tk": str(tk.TkVersion), "logo": type(getattr(app, "logo", None)).__name__,
+                     "icon": bool(getattr(root, "_appwalk_icons", None)), "pages": len(getattr(app, "pages", [])),
+                     "adb_on_path": bool(shutil.which("adb")), "frozen": bool(getattr(sys, "frozen", False)),
+                     "assets": os.path.isdir(ASSETS)}
+            try:
+                import report_pdf  # noqa: F401
+                facts["reportlab"] = True
+            except ImportError:
+                facts["reportlab"] = False
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(facts, f)
+        finally:
+            app.close()
+    root.after(2000, report)
+
 def main():
     if sys.platform == "darwin" and tk.TkVersion >= 9 and not os.environ.get("APPWALK_ALLOW_TK9"):
         sys.exit("This Python has Tk %s. On macOS, windows like this one have crashed with Tk 9.\n"
@@ -936,6 +962,7 @@ def main():
     root = tk.Tk()
     app = App(root)
     root.protocol("WM_DELETE_WINDOW", app.close)
+    smoke_check(root, app, "plain Tk")
     root.mainloop()
 
 

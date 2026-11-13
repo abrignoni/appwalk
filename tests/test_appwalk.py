@@ -639,6 +639,33 @@ class TeachTests(unittest.TestCase):
         self.assertTrue(any("one column" in w for w in warnings))
 
 
+class FindAdbTests(unittest.TestCase):
+    """A program opened from the Finder or the Start menu does not have a terminal's PATH."""
+
+    def test_adb_is_found_in_the_android_sdk_when_not_on_the_path(self):
+        sdk = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, sdk)
+        os.makedirs(os.path.join(sdk, "platform-tools"))
+        name = "adb.exe" if os.name == "nt" else "adb"
+        fake = os.path.join(sdk, "platform-tools", name)
+        write(fake, b"#!/bin/sh\n")
+        os.chmod(fake, 0o755)
+        saved = {k: os.environ.get(k) for k in ("PATH", "ANDROID_HOME", "APPWALK_ADB")}
+        try:
+            os.environ["PATH"] = tempfile.gettempdir()    # no adb there
+            os.environ["ANDROID_HOME"] = sdk
+            os.environ.pop("APPWALK_ADB", None)
+            self.assertEqual(appwalk.find_adb(), fake)
+            os.environ["APPWALK_ADB"] = "/somewhere/else/adb"   # an explicit choice wins
+            self.assertEqual(appwalk.find_adb(), "/somewhere/else/adb")
+        finally:
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+
+
 class ReportTextTests(unittest.TestCase):
     def test_characters_the_font_lacks_are_written_as_codes(self):
         try:
