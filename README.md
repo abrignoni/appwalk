@@ -2,9 +2,8 @@
 
 # AppWalk
 
-AppWalk 0.1.0 is a first version. It was tested on an Android 15 emulator and on one real phone, a
-Pixel 7a with Android 17, with WhatsApp, Signal and Discord (see Tested). The name is written AppWalk;
-the repository, the command and the module are `appwalk`.
+The name is written AppWalk; the repository, the command and the module are `appwalk`. What it was
+tested on is under Tested.
 
 It documents an Android app's content with screenshots, from a workstation, over adb, on a phone the
 examiner is allowed to examine. There are two ways to use it:
@@ -289,7 +288,7 @@ expected texts in the view trees without using view ids:
   that a text was in that step's picture, and the gap check has nothing to work with.
 - When screenshots come back black the command says so and exits with 2.
 
-A real phone, 12 November 2026: a Pixel 7a with Android 17, the owner's own accounts, one conversation
+Pixel 7a with Android 17, 12 November 2026, the owner's own accounts, one conversation
 each in WhatsApp 2.26.44.90, Signal 8.35.2 and Discord 353.11 (Discord from the window). The owner
 read the three reports against their screenshots: order right, sent and received right after one
 fix (a reply's side, now taken from its bubble), pictures named where the app names them. Signal,

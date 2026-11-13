@@ -2,9 +2,8 @@
 
 # AppWalk user manual
 
-For AppWalk 0.1.0, 12 November 2026, a first version. It was tested on an Android 15 emulator and on
-a Pixel 7a with Android 17; what exactly is in section 14, and anything not listed there has not been
-tried.
+For AppWalk 0.1.0, 12 November 2026. What it was tested on is in section 14; anything not listed there
+has not been tried.
 
 Every picture in this manual comes from AppWalk driven against an Android 15 emulator with made-up
 texts: the window, the phone screens inside it, and the two report pages. None comes from a real
