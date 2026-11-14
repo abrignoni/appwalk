@@ -46,7 +46,7 @@ The report shows the latest row hash. Write it down: it covers every row and eve
 export can be checked against it later.
 
 Profiles tell AppWalk which lines are messages, times and pictures, and who sent or wrote them. They
-ship for Google Messages, Fossify Messages, WhatsApp, Signal and Discord. For any other app,
+ship for Google Messages, Fossify Messages, WhatsApp, Signal, Discord and Instagram. For any other app,
 **Teach this app** builds one from a few clicks on a screenshot.
 
 ## Learn more
@@ -59,7 +59,7 @@ ship for Google Messages, Fossify Messages, WhatsApp, Signal and Discord. For an
 ## Tested on
 
 An Android 15 emulator with Google Messages and Fossify Messages, checked against ALEAPP, and with
-Silence and a web view page. A Pixel 7a with Android 17, with WhatsApp, Signal and Discord. The details, and what
+Silence and a web view page. A Pixel 7a with Android 17, with WhatsApp, Signal, Discord and Instagram. The details, and what
 has not been tried, are in section 14 of the manual.
 
 ## Working on the code

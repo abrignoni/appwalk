@@ -1,0 +1,26 @@
+{
+  "package": "com.instagram.android",
+  "checked_with": "Instagram 455.0.0.51.72 on a Pixel 7a, Android 17, 13 November 2026: a known-data chat of 12 messages logged with KDL, and one longer conversation checked against its screenshots",
+  "message_ids": [
+    "direct_text_message_text_view"
+  ],
+  "unnamed_message_min_height": 80,
+  "described_ids": [
+    "media_container"
+  ],
+  "bubble_ids": [
+    "direct_text_message_text_parent"
+  ],
+  "direction_rules": [
+    {
+      "by": "side",
+      "value": "right",
+      "direction": "sent"
+    },
+    {
+      "by": "side",
+      "value": "left",
+      "direction": "received"
+    }
+  ]
+}

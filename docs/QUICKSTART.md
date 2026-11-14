@@ -208,7 +208,7 @@ beside them is what the app reported, which is usually the same and is not guara
 - Left and right are where a line sat on the screen.
 - "sent" and "received" appear only for apps that have a profile, and each says on what basis: the
   app's own description, or the side of the screen. There are profiles for Google Messages, Fossify
-  Messages, WhatsApp, Signal and Discord.
+  Messages, WhatsApp, Signal, Discord and Instagram.
 - A line in square brackets is the description the app gave an item with no text, such as a picture.
   A bold line (Discord) is the name of who wrote the lines after it.
 - A line marked "joined by the screenshots" came from a screenshot that shared no text with the one

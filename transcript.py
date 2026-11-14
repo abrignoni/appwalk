@@ -185,6 +185,14 @@ def classify(line, profile):
     role = "described" if line.get("described") else "message"
     # A message view with no id of its own, known by its parent's id (Discord names no message text view).
     unnamed_message = not rid and short_id(line.get("parent_rid", "")) in profile.get("message_parent_ids", [])
+    # Text with no view id and no named parent, known only by where it sits and how tall its box is
+    # (Instagram 455 on a Pixel 7a: plain text bubbles have no id; on the left or right and at least
+    # 94 px tall in a known-data chat, while names, labels and the reel's account line were 52 to 68 px
+    # or centred). Opt-in, per profile, because it is a shape, not something the app names.
+    least = profile.get("unnamed_message_min_height")
+    if not unnamed_message and least and not rid and line["side"] in ("left", "right") and line.get("bounds"):
+        b = line["bounds"]
+        unnamed_message = (b[3] - b[1]) >= least
     if role == "message" and rid not in profile.get("message_ids", []) and not unnamed_message:
         return "other", "", ""
     for rule in profile.get("direction_rules", []):
