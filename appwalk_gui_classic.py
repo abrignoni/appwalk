@@ -940,7 +940,7 @@ class App:
         text = "; ".join(f"{names[k]} {v}" for k, v in values)
         self.identity_note.configure(text="Read: " + text + ". " + note)
         from tkinter import messagebox
-        if messagebox.askyesno("About phone", "Read from the phone's About phone screen:\n\n" + "\n".join(
+        if messagebox.askyesno("Phone identity", "Read from the phone's screens (About phone, or where the note says):\n\n" + "\n".join(
                 f"{names[k]}: {v}" for k, v in values) + "\n\nCheck them against the screenshots. Add them to the Note?",
                 parent=self.root):
             self.notes.set("; ".join(x for x in (self.notes.get().strip(), text) if x))
