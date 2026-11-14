@@ -1,0 +1,16 @@
+{
+  "package": "com.linkedin.android",
+  "checked_with": "LinkedIn on a Pixel 7a, Android 17, 13 November 2026: a known-data chat of 12 numbered messages between two phones, walked offline",
+  "message_ids": [
+    "body"
+  ],
+  "author_ids": [
+    "sender_name"
+  ],
+  "described_ids": [
+    "attachment_image",
+    "messaging_third_party_media_image",
+    "feed_single_image_presenter"
+  ],
+  "single_column": true
+}

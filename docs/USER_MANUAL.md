@@ -303,7 +303,7 @@ seen on it. A photo is therefore on the same page as the line that names it.
   same as at the top of the transcript page.
 - A line in square brackets is the description the app gave an item with no text, such as a picture.
   It can hold more than the screenshot shows: in Discord, an image's address.
-- A bold line is the name of who wrote the lines after it, where the app shows names (Discord).
+- A bold line is the name of who wrote the lines after it, where the app shows names (Discord, LinkedIn).
 - A code such as [U+1FAC2] is a character the report's font cannot draw, most often an emoji. The
   transcript page and the screenshot show it as it was reported. A code from U+E000 to U+F8FF is in
   Unicode's private use area and has no meaning of its own: only the app's font draws it (Signal puts
@@ -374,7 +374,7 @@ a wrong hash gave a WARNING.
 
 Without a profile, the transcript gives every line of an app as plain text: no sent or received, no
 times picked out, no pictures named. AppWalk comes with profiles for Google Messages, Fossify
-Messages, WhatsApp, Signal, Discord, Instagram and Threads. For any other app, or to replace one of those, teach it:
+Messages, WhatsApp, Signal, Discord, Instagram, Threads and LinkedIn. For any other app, or to replace one of those, teach it:
 **Teach this app** on the Result step, or for an earlier export:
 
 ```bash
@@ -512,6 +512,12 @@ On 11 to 13 November 2026.
   quoted message above the reply was first taken as a message; its box runs under the reply's, which
   no other bubble's does, and that now leaves it out. An earlier conversation in the same chat was
   checked against its screenshots.
+- LinkedIn, 13 November: a known-data chat of 12 numbered messages with the owner's other phone
+  (text, long text, emoji, a single emoji, a reaction, a shared post, a photo, a GIF), walked offline.
+  LinkedIn shows every message in one column under the sender's name, so, as for Discord, no message
+  is called sent or received; the bold name line above each says who wrote it. All 8 text messages
+  came out as messages under the right name, the photo and GIF as "Photo attached" and "Animated
+  GIF", the shared post as its text with "View image", and the reaction as two other lines.
 - Teaching Signal through the 0.1.0 dialog saved a photo's placeholder as the time and a picture as
   the author. The dialog of 0.1.1 takes only text for those and shows the words of each click.
 
