@@ -1014,6 +1014,9 @@ IDENTITY_LABELS = {
     "model": ("model", "model name", "modelo", "nombre del modelo"),
 }
 
+# A phone number inside a value: an optional "+", then digits with spaces, dashes or brackets between them.
+PHONE_IN_TEXT = re.compile(r"\+?\d[\d\s()-]{5,}\d")
+
 
 def imei_ok(digits):
     """True for 15 digits whose last is the IMEI check digit (the Luhn formula of 3GPP TS 23.003)."""
@@ -1047,10 +1050,17 @@ def identity_from_trees(export):
             if imei_ok(digits) and ("imei", digits) not in seen:
                 seen.add(("imei", digits))
                 found["imei"].append({"value": digits, "step": d["step"]})
-            label = t.strip().lower().rstrip(":")
+            # A label can name its SIM after a middle dot: "Número de teléfono · Tarjeta SIM" (moto g47,
+            # Android 16, Device details, 14 November 2026). The part before the dot is the label.
+            label = t.strip().lower().rstrip(":").split(" · ")[0].strip()
             for key, names in IDENTITY_LABELS.items():
                 if i + 1 < len(texts) and (label in names or re.fullmatch(r"(" + "|".join(map(re.escape, names)) + r") ?\d", label)):
                     v = texts[i + 1].strip()
+                    if key == "phone_number":
+                        # Only the number itself. The moto g47 put the SIM's state first ("Solo emergencia
+                        # +54 9 ..."), and gave "No disponible" for an eSIM with no number.
+                        m = PHONE_IN_TEXT.search(v)
+                        v = m.group(0) if m else ""
                     if v and (key, v) not in seen:
                         seen.add((key, v))
                         found[key].append({"value": v, "step": d["step"], "label": t.strip()})
