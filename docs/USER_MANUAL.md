@@ -370,6 +370,35 @@ python3 make_documentation.py <export folder> -o out.xlsx --expect-hash <hash>
 Use the script from KDL 0.5.0 or later: it was run on an AppWalk export and found the noted hash, and
 a wrong hash gave a WARNING.
 
+### Adding a file after the walk
+
+Some apps can export a chat themselves. WhatsApp's **Export chat** with **Include media** gives a zip
+with the chat as text and the original files, voice notes included: sound that no screenshot holds.
+Such a file can be added to the export, and then the latest row hash covers it too. In the window:
+**Add a file** on the Result step, or **Add a file to an earlier export** under Earlier work on the
+Phone step. Pick the file, then say in a line what it is and how it reached this computer. The window
+shows the file's SHA-256 and the new latest row hash. From the command line:
+
+```bash
+python3.12 appwalk.py attach <export folder> --file <the file> --note "what it is and how it was made"
+python3.12 appwalk.py attach <export folder> --from-phone <path on the phone> --serial <adb serial>
+```
+
+The file is kept in `attachments/` in the export. A row is added to the end of the chain with its
+SHA-256 and size and, for a zip, each file inside it (name, size, CRC-32). With `--from-phone` the
+file is hashed on the phone too, and nothing is added unless the copy matches. The check then tests
+each added file against its row, and the report lists it under "Files added after the walk". Write
+down the new latest row hash: it replaces the one from the walk.
+
+Getting the file off the phone: on the Pixel 7a (13 November 2026) WhatsApp's export opens Android's
+share sheet, and no app there saves a zip to the phone itself (Google's Files app takes only photos
+and videos). Drive, email and the like send it off the phone. Bluetooth to the examiner's computer
+keeps it off the internet. Either way the file reaches the computer first, so use `--file`, and say
+in `--note` how it got there.
+
+An app's export holds the whole conversation, whatever part of it was walked, and each app has its
+own limits on how much it includes.
+
 ## 12. Teach AppWalk an app
 
 Without a profile, the transcript gives every line of an app as plain text: no sent or received, no
@@ -631,9 +660,11 @@ python3 appwalk.py verify <export folder>
 python3 appwalk.py transcript <export folder>
 python3 appwalk.py report <export folder>
 python3 appwalk.py teach <export folder>
+python3 appwalk.py attach <export folder> --file <file>
 ```
 
-check an export, write its transcript again, write its report again, and open the Teach window on it.
+check an export, write its transcript again, write its report again, open the Teach window on it, and
+add a file to it (section 11).
 A walk exits with 2 when its result is not complete or not confirmed; `verify` exits with 1 when a
 check fails.
 

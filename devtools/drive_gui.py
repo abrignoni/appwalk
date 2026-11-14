@@ -232,6 +232,42 @@ def scenario_t():
          dlg.result.replace(home_dir(), "~"))
 
 
+def scenario_attach():
+    """A: a file added after the walk, from the Result step and from Earlier work (file pickers answered here)."""
+    import zipfile
+    import appwalk_gui_classic as classic_mod
+    if not app.export:
+        note("A: no export to add a file to", False)
+        return
+    z = os.path.join(out, "chat export.zip")
+    with zipfile.ZipFile(z, "w") as f:
+        f.writestr("_chat.txt", "made-up chat text\n")
+        f.writestr("PTT-0001.opus", b"\x00" * 200)
+    real = (classic_mod.filedialog.askopenfilename, classic_mod.filedialog.askdirectory, app.ask_note)
+    classic_mod.filedialog.askopenfilename = lambda **k: z
+    app.ask_note = lambda: "made-up zip for the window check"
+    before = app.hash_value.get()
+    app.show(3)
+    app.add_file_btn.invoke()
+    yield lambda: True
+    said = app.result_text.get("1.0", "end")
+    note("A: Add a file on the Result step adds it and shows the new hash", "Added attachments/chat export.zip" in said
+         and app.hash_value.get() != before and "A zip of 2 files" in said, app.hash_value.get()[:16])
+    note("A: the export still checks out, with the file", all(ok for _, _, ok in appwalk.verify_export(app.export)))
+    z2 = os.path.join(out, "second.txt")
+    with open(z2, "w") as f:
+        f.write("made-up second file\n")
+    classic_mod.filedialog.askopenfilename = lambda **k: z2
+    classic_mod.filedialog.askdirectory = lambda **k: app.export
+    app.show(0)
+    app.add_file_earlier()
+    yield lambda: True
+    note("A: Add a file to an earlier export", app.earlier.cget("text").startswith("Added attachments/second.txt"),
+         app.earlier.cget("text")[:40])
+    picture("13_add_file", root)
+    classic_mod.filedialog.askopenfilename, classic_mod.filedialog.askdirectory, app.ask_note = real
+
+
 def home_dir():
     return os.path.expanduser("~")
 
@@ -250,6 +286,7 @@ def teach_only():
     note("window opened", True)
     check_logo()
     yield from scenario_t()
+    yield from scenario_attach()
 
 
 def quick():

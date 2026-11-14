@@ -263,6 +263,7 @@ if ctk is not None:
             row = ctk.CTkFrame(c, fg_color="transparent")
             row.pack(fill="x")
             self.ghost(row, "Check an earlier export", self.check_earlier).pack(side="left")
+            self.ghost(row, "Add a file to an earlier export", self.add_file_earlier).pack(side="left", padx=(8, 0))
             self.earlier = Label(row, text="Picks a folder AppWalk wrote and checks its hash chain and every file.", font=self.f_small,
                                  text_color=MUTED, anchor="w", justify="left", wraplength=540)
             self.earlier.pack(side="left", padx=12)
@@ -392,6 +393,8 @@ if ctk is not None:
             self.verify_btn.pack(side="left", padx=8)
             self.teach_btn = self.ghost(buttons, "Teach this app", self.teach)
             self.teach_btn.pack(side="left")
+            self.add_file_btn = self.ghost(buttons, "Add a file", self.add_file_here)
+            self.add_file_btn.pack(side="left", padx=(8, 0))
             self.ghost(buttons, "Document something else", lambda: self.show(1)).pack(side="right")
             return page
 
@@ -520,6 +523,12 @@ if ctk is not None:
             self.ghost(buttons, "End the run", lambda: close(None)).pack(side="left")
             win.protocol("WM_DELETE_WINDOW", lambda: close(None))
             self.blocked_win = win
+
+        def ask_note(self):
+            dlg = ctk.CTkInputDialog(title="Add a file", text="What is this file, and how did it get to this computer?\n"
+                                     "(for example: WhatsApp, Export chat, Include media, saved through Drive)")
+            self.place_dialog(dlg)
+            return dlg.get_input()
 
         def check_earlier(self):
             d = filedialog.askdirectory(initialdir=self.out.get() or os.path.expanduser("~"))

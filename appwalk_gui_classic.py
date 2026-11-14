@@ -272,6 +272,7 @@ class App:
 
         c = self.card(page, "Earlier work")
         ttk.Button(c, text="Check an earlier export", command=self.check_earlier).pack(side="left")
+        ttk.Button(c, text="Add a file to an earlier export", command=self.add_file_earlier).pack(side="left", padx=(8, 0))
         self.earlier = tk.Label(c, text="Picks a folder AppWalk wrote and checks its hash chain and every file.", font=self.f_small, bg=CARD, fg=MUTED,
                                 anchor="w", justify="left", wraplength=560)
         self.earlier.pack(side="left", padx=12)
@@ -385,6 +386,8 @@ class App:
         self.verify_btn.pack(side="left")
         self.teach_btn = ttk.Button(buttons, text="Teach AppWalk this app", command=self.teach)
         self.teach_btn.pack(side="left", padx=8)
+        self.add_file_btn = ttk.Button(buttons, text="Add a file", command=self.add_file_here)
+        self.add_file_btn.pack(side="left")
         ttk.Button(buttons, text="Document something else", command=lambda: self.show(1)).pack(side="right")
         return page
 
@@ -858,6 +861,65 @@ class App:
         self.result_text.configure(state="disabled")
         self.open_btn.configure(state="normal" if os.path.exists(os.path.join(self.export, "transcript.html")) else "disabled")
         self.report_btn.configure(state="normal" if os.path.exists(os.path.join(self.export, "report.pdf")) else "disabled")
+
+    # ---- a file added after the walk (an app's own chat export, for example) ----
+
+    def ask_note(self):
+        """A line saying what the file is and how it reached this computer, kept in its row."""
+        from tkinter import simpledialog
+        return simpledialog.askstring("Add a file", "What is this file, and how did it get to this computer?\n"
+                                      "(for example: WhatsApp, Export chat, Include media, saved through Drive)",
+                                      parent=self.root)
+
+    def add_file_to(self, export):
+        """Picks a file, asks for a note, and adds it to export. Returns (text, ok, new latest row hash)."""
+        f = filedialog.askopenfilename(title="A file to add to this export", initialdir=os.path.expanduser("~"))
+        if not f:
+            return None
+        note = self.ask_note()
+        if note is None:
+            return None
+        try:
+            d = appwalk.attach_file(export, local_path=f, note=note)
+        except (OSError, ValueError, KeyError, RuntimeError) as e:
+            return f"Not added: {type(e).__name__}: {e}", False, None
+        with open(os.path.join(export, "manifest.json"), encoding="utf-8") as fh:
+            last = json.load(fh)["hash_chain"]["last_row_hash"]
+        text = f"Added attachments/{d['file']}: {d['bytes']:,} bytes, SHA-256 {d['sha256']}."
+        if "zip_members" in d:
+            kinds = {}
+            for m in d["zip_members"]:
+                ext = os.path.splitext(m["name"])[1].lower() or "(no extension)"
+                kinds[ext] = kinds.get(ext, 0) + 1
+            text += f" A zip of {len(d['zip_members'])} files: " + ", ".join(f"{n} {k}" for k, n in sorted(kinds.items())) + "."
+        text += f" The latest row hash is now {last}: write this one down."
+        return text, True, last
+
+    def add_file_here(self):
+        if not self.export:
+            return
+        got = self.add_file_to(self.export)
+        if not got:
+            return
+        text, ok, last = got
+        if last:
+            self.hash_value.set(last)
+        self.result_text.configure(state="normal")
+        self.result_text.insert("end", "\n" + text + "\n", () if ok else ("warn",))
+        self.result_text.see("end")
+        self.result_text.configure(state="disabled")
+        self.report_btn.configure(state="normal" if os.path.exists(os.path.join(self.export, "report.pdf")) else "disabled")
+
+    def add_file_earlier(self):
+        d = filedialog.askdirectory(title="The export to add a file to", initialdir=self.out.get() or os.path.expanduser("~"))
+        if not d:
+            return
+        if not os.path.exists(os.path.join(d, "manifest.json")):
+            self.earlier.configure(text="Not an AppWalk export: no manifest.json in that folder.")
+            return
+        got = self.add_file_to(d)
+        if got:
+            self.earlier.configure(text=got[0])
 
     def verify_now(self):
         if not self.export:
