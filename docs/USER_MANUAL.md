@@ -374,7 +374,10 @@ a wrong hash gave a WARNING.
 
 Some apps can export a chat themselves. WhatsApp's **Export chat** with **Include media** gives a zip
 with the chat as text and the original files, voice notes included: sound that no screenshot holds.
-Such a file can be added to the export, and then the latest row hash covers it too:
+Such a file can be added to the export, and then the latest row hash covers it too. In the window:
+**Add a file** on the Result step, or **Add a file to an earlier export** under Earlier work on the
+Phone step. Pick the file, then say in a line what it is and how it reached this computer. The window
+shows the file's SHA-256 and the new latest row hash. From the command line:
 
 ```bash
 python3.12 appwalk.py attach <export folder> --file <the file> --note "what it is and how it was made"
