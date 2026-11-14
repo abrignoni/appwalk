@@ -1014,6 +1014,9 @@ IDENTITY_LABELS = {
     "model": ("model", "model name", "modelo", "nombre del modelo"),
 }
 
+# A phone number inside a value: an optional "+", then digits with spaces, dashes or brackets between them.
+PHONE_IN_TEXT = re.compile(r"\+?\d[\d\s()-]{5,}\d")
+
 
 def imei_ok(digits):
     """True for 15 digits whose last is the IMEI check digit (the Luhn formula of 3GPP TS 23.003)."""
@@ -1047,10 +1050,17 @@ def identity_from_trees(export):
             if imei_ok(digits) and ("imei", digits) not in seen:
                 seen.add(("imei", digits))
                 found["imei"].append({"value": digits, "step": d["step"]})
-            label = t.strip().lower().rstrip(":")
+            # A label can name its SIM after a middle dot: "Número de teléfono · Tarjeta SIM" (moto g47,
+            # Android 16, Device details, 14 November 2026). The part before the dot is the label.
+            label = t.strip().lower().rstrip(":").split(" · ")[0].strip()
             for key, names in IDENTITY_LABELS.items():
                 if i + 1 < len(texts) and (label in names or re.fullmatch(r"(" + "|".join(map(re.escape, names)) + r") ?\d", label)):
                     v = texts[i + 1].strip()
+                    if key == "phone_number":
+                        # Only the number itself. The moto g47 put the SIM's state first ("Solo emergencia
+                        # +54 9 ..."), and gave "No disponible" for an eSIM with no number.
+                        m = PHONE_IN_TEXT.search(v)
+                        v = m.group(0) if m else ""
                     if v and (key, v) not in seen:
                         seen.add((key, v))
                         found[key].append({"value": v, "step": d["step"], "label": t.strip()})
@@ -1063,7 +1073,7 @@ def identify(serial, out, device_label, case=None, say=print):
     the screenshots are still kept and chained, for the examiner to read. The values found go into a
     chained row; the examiner confirms them before they are used. Returns (export, found, note)."""
     dev = AdbDevice(serial)
-    dev.shell("am start -a android.settings.DEVICE_INFO_SETTINGS")
+    dev.shell(OPEN_ABOUT_PHONE)
     time.sleep(2)
     # Stock Android's About phone shows an Uptime line that changes every second, so the screen is never
     # still and uiautomator never gives its tree (Pixel 7a on Android 17, emulator on Android 15). One quick
@@ -1078,16 +1088,68 @@ def identify(serial, out, device_label, case=None, say=print):
         export = empty_export(dev, out, "phone-identity", device_label, case)
     note = ""
     if not readable or r["summary"]["screens"] == 0:
-        dev.shell("am start -a android.settings.DEVICE_INFO_SETTINGS")
+        dev.shell(OPEN_ABOUT_PHONE)
         time.sleep(1)
-        note = screenshots_without_tree(export, dev)
+        # A readable screen can still give no walk: on a moto g47 (14 November 2026) the walk was blocked
+        # before it began, com.android.systemui in front. Say that, not that there was no view tree.
+        why = None if not readable else "the walk took no screenshot: " + str(r["summary"]["stop_reason"])
+        note = screenshots_without_tree(export, dev, why=why)
     found = identity_from_trees(export)
+    if readable and not found["imei"]:
+        opened = walk_details_row(dev, export, say)
+        if opened:
+            found = identity_from_trees(export)
+            note = (note + " " if note else "") + f'About phone named no IMEI; the row "{opened}" was opened and walked too.'
     log = AppendLog(export, dev)
     log.add("system_event", "identity_read", {"found": found, "note": note,
-                                               "how": "From the view trees of Settings > About phone; an IMEI only when its check digit is right."})
+                                               "how": "From the view trees of Settings > About phone and any row opened from it; an IMEI only when its check digit is right."})
     log.close()
     refresh_manifest(export, log.rows, dev)
     return export, found, note
+
+
+# About phone in a task of its own (NEW_TASK and CLEAR_TASK). Without it Android brings Settings to the front
+# as it was left: a moto g47 still on Device details was walked as if that were About phone (14 November 2026).
+OPEN_ABOUT_PHONE = "am start -f 0x10008000 -a android.settings.DEVICE_INFO_SETTINGS"
+
+
+# Rows of About phone that lead to the IMEI, lower case. Add a label only from a screen that showed it.
+DETAILS_ROW_LABELS = ("detalles del dispositivo",)   # moto g47, Android 16, es-US, 14 November 2026
+
+
+def walk_details_row(dev, export, say=print, tries=8):
+    """When About phone names no IMEI, finds a row that leads to it by its text, taps it and walks the
+    screen it opens, into the same export. On a moto g47 the IMEIs are in Device details, one screen in,
+    and About phone is laid out as cards, which the list reader does not take as rows. Returns the row's
+    text, or None when no such row was found or it did not open."""
+    dev.shell(OPEN_ABOUT_PHONE)
+    time.sleep(2)
+    for _ in range(tries):
+        tree = Tree(dev.tree_raw())
+        hit = next((n for n in tree.nodes("com.android.settings")
+                    if (n.get("text") or "").strip().lower() in DETAILS_ROW_LABELS), None)
+        if hit is not None:
+            break
+        dev.swipe(540, 1600, 540, 900, 600)
+        time.sleep(1.5)
+    else:
+        return None
+    l, t, r, b = map(int, BOUNDS.match(hit.get("bounds")).groups())
+    x, y, title = (l + r) // 2, (t + b) // 2, hit.get("text").strip()
+    before = tree.fingerprint("com.android.settings")
+    dev.tap(x, y)
+    time.sleep(2)
+    after = Tree(dev.tree_raw())
+    log = AppendLog(export, dev)
+    opened = after.front_package == "com.android.settings" and after.fingerprint("com.android.settings") != before
+    log.add("auto_event", "open_item", {"title": title, "tap": [x, y], "row_bounds": [l, t, r, b], "opened": opened,
+                                        "why": "About phone named no IMEI; this row leads to it on some phones"})
+    if opened:
+        walker = Walker(dev, log, "com.android.settings", reveal="below", max_screens=15, rewind=True, say=say)
+        walker.run(item=title, reveal="below", capture=True, rewind=True)
+    log.close()
+    refresh_manifest(export, log.rows, dev)
+    return title if opened else None
 
 
 def nearly_same(a, b):
@@ -1127,9 +1189,10 @@ def empty_export(dev, out, scenario, device_label, case=None):
     return export
 
 
-def screenshots_without_tree(export, dev, most=8):
+def screenshots_without_tree(export, dev, most=8, why=None):
     """Screenshots only, scrolling down, each hash in a chained row, until a scroll no longer changes the
-    screen (a ticking clock aside): for a screen whose view tree cannot be read. Returns a note saying so."""
+    screen (a ticking clock aside): for a screen whose view tree cannot be read, or whose walk took none
+    (`why` says so then). Returns a note saying which."""
     # Settings can reopen the page where it was left: go to the top first, until a scroll changes nothing.
     top = dev.screenshot()
     for _ in range(10):
@@ -1150,12 +1213,15 @@ def screenshots_without_tree(export, dev, most=8):
         with open(os.path.join(export, "screens", name), "wb") as f:
             f.write(png)
         log.add("auto_event", "screenshot_without_tree", {"png_file": name, "png_sha256": sha256(png), "n": n,
-                                                          "why": "the phone gave no view tree for this screen"})
+                                                          "why": why or "the phone gave no view tree for this screen"})
         prev = png
         dev.swipe(540, 1700, 540, 900, 600)
         time.sleep(1.5)
     log.close()
     refresh_manifest(export, log.rows, dev)
+    if why:
+        return (f"About phone could not be walked ({why}), so nothing could be read from it; {n} screenshot(s) "
+                "of it are kept and chained, for the values to be read from them.")
     return (f"The phone gave no view tree for About phone, so nothing could be read from it; {n} screenshot(s) "
             "of it are kept and chained, for the values to be read from them.")
 

@@ -940,6 +940,24 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual([v["value"] for v in found["phone_number"]], ["+1 555-123-4567"])
         self.assertEqual([v["value"] for v in found["serial_number"]], ["R5CT1234ABC"])
 
+    def test_labels_that_name_their_sim(self):
+        # The labels and value shapes of Device details on a moto g47 (Android 16, es-US), with made-up values.
+        out = run(FakePhone(count=5, scrollable=False))[0]
+        rows = [json.loads(x) for x in open(os.path.join(out, "actions.jsonl"), encoding="utf-8")]
+        shot = next(json.loads(r["detail"]) for r in rows if r["action"] == "screenshot")
+        tree = os.path.join(out, "trees", shot["tree_file"])
+        texts = ["Modelo", "moto g47", "Número de teléfono · Tarjeta SIM", "Solo emergencia +1 555 555-0100",
+                 "Número de teléfono · eSIM", "No disponible", "IMEI1 · Tarjeta SIM", "490154203237518"]
+        nodes = "".join(f'<node class="android.widget.TextView" package="com.android.settings" text="{t}" bounds="[0,{i * 60}][500,{i * 60 + 50}]" />'
+                        for i, t in enumerate(texts))
+        with open(tree, "w", encoding="utf-8") as f:
+            f.write(f'<?xml version="1.0"?><hierarchy>{nodes}</hierarchy>')
+        found = appwalk.identity_from_trees(out)
+        self.assertEqual([v["value"] for v in found["phone_number"]], ["+1 555 555-0100"])   # the number only
+        self.assertEqual([v["label"] for v in found["phone_number"]], ["Número de teléfono · Tarjeta SIM"])
+        self.assertEqual([v["value"] for v in found["model"]], ["moto g47"])
+        self.assertEqual([v["value"] for v in found["imei"]], ["490154203237518"])
+
     def test_a_ticking_clock_is_not_a_scroll(self):
         if not appwalk.pixels_available():
             self.skipTest("needs Pillow")
