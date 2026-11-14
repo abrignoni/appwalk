@@ -1,0 +1,29 @@
+{
+  "package": "com.instagram.barcelona",
+  "checked_with": "Threads on a Pixel 7a, Android 17, 13 November 2026: a known-data chat of 11 numbered messages between two phones, walked offline, and an earlier conversation checked against its screenshots",
+  "message_box_descriptions": [
+    "Chat text message",
+    "Chat emoji text message"
+  ],
+  "described_box_descriptions": [
+    "Chat post share message",
+    "Chat animated media message",
+    "Photo preview",
+    "Video preview"
+  ],
+  "described_ids": [
+    "BdsImage"
+  ],
+  "direction_rules": [
+    {
+      "by": "side",
+      "value": "right",
+      "direction": "sent"
+    },
+    {
+      "by": "side",
+      "value": "left",
+      "direction": "received"
+    }
+  ]
+}
