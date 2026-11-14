@@ -1047,13 +1047,23 @@ def identity_from_trees(export):
             if imei_ok(digits) and ("imei", digits) not in seen:
                 seen.add(("imei", digits))
                 found["imei"].append({"value": digits, "step": d["step"]})
-            label = t.strip().lower().rstrip(":")
+            # A Motorola labels per SIM: "Número de teléfono · Tarjeta SIM" (moto g47, Android 16).
+            label = t.strip().lower().rstrip(":").split(" \u00b7 ")[0].strip()
             for key, names in IDENTITY_LABELS.items():
                 if i + 1 < len(texts) and (label in names or re.fullmatch(r"(" + "|".join(map(re.escape, names)) + r") ?\d", label)):
                     v = texts[i + 1].strip()
+                    shown = v
+                    if key == "phone_number":
+                        # The number can follow a status ("Solo emergencia +1 ...", moto g47), or be missing
+                        # ("No disponible"): take the part that is a number, or nothing.
+                        m = re.search(r"\+?\d[\d\s().-]{5,}\d", v)
+                        v = m.group(0) if m and len(re.sub(r"\D", "", m.group(0))) >= 7 else ""
                     if v and (key, v) not in seen:
                         seen.add((key, v))
-                        found[key].append({"value": v, "step": d["step"], "label": t.strip()})
+                        item = {"value": v, "step": d["step"], "label": t.strip()}
+                        if shown != v:
+                            item["shown"] = shown
+                        found[key].append(item)
     return found
 
 
@@ -1082,12 +1092,85 @@ def identify(serial, out, device_label, case=None, say=print):
         time.sleep(1)
         note = screenshots_without_tree(export, dev)
     found = identity_from_trees(export)
+    if not found["imei"]:
+        searched = imei_by_settings_search(export, dev, say)
+        note = " ".join(x for x in (note, searched) if x)
+        found = identity_from_trees(export)
     log = AppendLog(export, dev)
     log.add("system_event", "identity_read", {"found": found, "note": note,
-                                               "how": "From the view trees of Settings > About phone; an IMEI only when its check digit is right."})
+                                               "how": "From the view trees of Settings > About phone, and of the screen Settings' own "
+                                                      "search opens for IMEI when About phone gave none; an IMEI only when its check "
+                                                      "digit is right."})
     log.close()
     refresh_manifest(export, log.rows, dev)
     return export, found, note
+
+
+def tree_now(dev):
+    """The screen's view tree now, or None when uiautomator gives none (a screen that never keeps still)."""
+    raw = dev.adb("exec-out", "uiautomator", "dump", "/dev/tty", timeout=90)
+    i, j = raw.find(b"<?xml"), raw.rfind(b"</hierarchy>")
+    return None if i < 0 or j < 0 else raw[i:j + len(b"</hierarchy>")]
+
+
+def box_of(n):
+    m = BOUNDS.match(n.get("bounds") or "")
+    if not m:
+        return None
+    l, t, r, b = map(int, m.groups())
+    return (l, t, r, b) if r > l and b > t else None
+
+
+def center(n):
+    l, t, r, b = box_of(n)
+    return (l + r) // 2, (t + b) // 2
+
+
+def imei_by_settings_search(export, dev, say=print, word="IMEI"):
+    """When About phone gave no IMEI: opens Settings' own search, types IMEI (the same word in every
+    language) and opens the first result. On a moto g47 (Android 16) the IMEIs are not on About phone but
+    one screen in, in Device details, and About phone gives no view tree to find that entry by; Device
+    details does give one. Where the result's screen gives a tree it is walked like About phone. Each step
+    is a chained row. Settings may keep IMEI among its recent searches. Returns a note."""
+    log = AppendLog(export, dev)
+    try:
+        # In a task of its own: otherwise the intent can go to a Settings task already open on another page.
+        dev.shell("am start -a android.settings.APP_SEARCH_SETTINGS -f 0x10008000")
+        time.sleep(3)
+        raw = tree_now(dev)
+        if raw is None:
+            log.add("system_event", "settings_search", {"result": "the search screen gave no view tree"})
+            return f"Settings' search for {word} could not be used: its screen gave no view tree."
+        tree = Tree(raw)
+        field = next((n for n in tree.nodes() if (n.get("class") or "").endswith("EditText")), None)
+        if field is None:
+            log.add("system_event", "settings_search", {"result": "no search field on the search screen"})
+            return f"Settings' search for {word} could not be used: no search field was found."
+        dev.tap(*center(field))
+        dev.shell(f"input text {word}")
+        time.sleep(3)
+        raw = tree_now(dev)
+        hits = [n for n in (Tree(raw).nodes() if raw else []) if word in (n.get("text") or "")
+                and not (n.get("class") or "").endswith("EditText") and box_of(n)]
+        if not hits:
+            log.add("system_event", "settings_search", {"typed": word, "result": f"no result names {word}"})
+            return f"Settings' search for {word} found nothing."
+        hit = min(hits, key=lambda n: box_of(n)[1])
+        log.add("system_event", "settings_search", {"typed": word, "opened": hit.get("text"), "results_naming_it": len(hits)})
+        dev.tap(*center(hit))
+        time.sleep(3)
+    finally:
+        log.close()
+        refresh_manifest(export, log.rows, dev)
+    if tree_now(dev) is None:
+        return (f"Settings' search for {word} opened a screen that gives no view tree either (About phone itself, with its "
+                "ticking clock, on stock Android); see the screenshots of About phone.")
+    log = AppendLog(export, dev)
+    walker = Walker(dev, log, "com.android.settings", reveal="below", max_screens=15, rewind=True, say=say)
+    s = walker.run()
+    log.close()
+    refresh_manifest(export, log.rows, dev)
+    return f"Settings' search for {word} opened a screen with a view tree; {s['screens']} screenshot(s) of it were walked and read."
 
 
 def nearly_same(a, b):

@@ -418,8 +418,17 @@ right), the phone number and the serial, and offers them for the Note after you 
 the screenshots. On stock Android it cannot: About phone shows an Uptime line that changes every
 second, and Android gives a screen's text only once it is still. That was so on a Pixel 7a with
 Android 17 and on the Android 15 emulator (13 November 2026): the screenshots were kept, the IMEI and
-number are in them, and nothing was read. Reading the text is tested only on made-up screens so far;
-an examiner reports that a Samsung gives it.
+number are in them, and nothing was read. A tester reports that a Samsung SM-G990E (Android 16) gives
+the text, and that AppWalk read the model, IMEI, phone number and serial from it.
+
+When About phone gives no IMEI, AppWalk opens Settings' own search, types IMEI (the same word in
+every language) and opens the first result. On a moto g47 (Android 16) the IMEIs are not on About
+phone, which gives no text, but one screen in, in Device details, which does; there the result's
+screen is walked and read like About phone. On stock Android the result is About phone again, and
+the note says so. Each step is in the chain. Settings may keep IMEI among its recent searches on
+the phone. A phone number that follows a status ("Solo emergencia" on the moto g47) is read without
+the status, and the screen's wording is kept beside it. The Device details reading is tested on the
+tester's trees with made-up values and on made-up screens; the search on the Android 15 emulator.
 
 ## 12. Teach AppWalk an app
 

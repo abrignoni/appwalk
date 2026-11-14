@@ -940,6 +940,25 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual([v["value"] for v in found["phone_number"]], ["+1 555-123-4567"])
         self.assertEqual([v["value"] for v in found["serial_number"]], ["R5CT1234ABC"])
 
+    def test_labels_per_sim_and_a_number_after_a_status(self):
+        # As a moto g47 (Android 16, Spanish) lays out Device details, with made-up values.
+        out = run(FakePhone(count=5, scrollable=False))[0]
+        rows = [json.loads(x) for x in open(os.path.join(out, "actions.jsonl"), encoding="utf-8")]
+        shot = next(json.loads(r["detail"]) for r in rows if r["action"] == "screenshot")
+        tree = os.path.join(out, "trees", shot["tree_file"])
+        nodes = "".join(f'<node class="android.widget.TextView" package="com.android.settings" text="{t}" bounds="[0,{i * 60}][500,{i * 60 + 50}]" />'
+                        for i, t in enumerate(["Modelo", "moto test", "N\u00famero de tel\u00e9fono \u00b7 Tarjeta SIM",
+                                               "Solo emergencia +1 555 555-0100", "N\u00famero de tel\u00e9fono \u00b7 eSIM", "No disponible",
+                                               "IMEI1 \u00b7 Tarjeta SIM", "490154203237518", "EID \u00b7 eSIM",
+                                               "89000000000000000000000000000001"]))
+        with open(tree, "w", encoding="utf-8") as f:
+            f.write(f'<?xml version="1.0"?><hierarchy>{nodes}</hierarchy>')
+        found = appwalk.identity_from_trees(out)
+        self.assertEqual([(v["value"], v.get("shown")) for v in found["phone_number"]],
+                         [("+1 555 555-0100", "Solo emergencia +1 555 555-0100")])   # "No disponible" is not a number
+        self.assertEqual([v["value"] for v in found["imei"]], ["490154203237518"])     # the EID is not an IMEI
+        self.assertEqual([v["value"] for v in found["model"]], ["moto test"])
+
     def test_a_ticking_clock_is_not_a_scroll(self):
         if not appwalk.pixels_available():
             self.skipTest("needs Pillow")
