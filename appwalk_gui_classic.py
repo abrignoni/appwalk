@@ -96,8 +96,13 @@ def save_settings(values):
         pass
 
 
+IDENTITY_HINT = ("Opens Settings > About phone and keeps screenshots of it, in the hash chain. Where the phone gives "
+                 "the screen's text, the IMEI, phone number and serial are read for you to check.")
+
+
 class App:
     def __init__(self, root):
+        self.identity_hash = self.earlier_hash = ""   # the latest row hashes the Copy hash buttons copy
         self.root = root
         root.title("AppWalk")
         window_icon(root)
@@ -269,10 +274,22 @@ class App:
         self.field(c, 0, "Case or reference", self.reference, col=2)
         self.field(c, 1, "Label for this phone", self.label)
         self.field(c, 1, "Note", self.notes, col=2)
+        idrow = ttk.Frame(c, style="Card.TFrame")
+        idrow.grid(row=2, column=0, columnspan=4, sticky="w", pady=(8, 0))
+        self.identity_btn = ttk.Button(idrow, text="Document About phone", command=self.identify_now)
+        self.identity_btn.pack(side="left")
+        self.identity_copy = ttk.Button(idrow, text="Copy hash", command=lambda: self.copy_text(self.identity_hash),
+                                        state="disabled")
+        self.identity_copy.pack(side="left", padx=(8, 0))
+        self.identity_note = tk.Label(idrow, text=IDENTITY_HINT, font=self.f_small, bg=CARD, fg=MUTED, anchor="w",
+                                      justify="left", wraplength=760)
+        self.identity_note.pack(side="left", padx=12)
 
         c = self.card(page, "Earlier work")
         ttk.Button(c, text="Check an earlier export", command=self.check_earlier).pack(side="left")
         ttk.Button(c, text="Add a file to an earlier export", command=self.add_file_earlier).pack(side="left", padx=(8, 0))
+        self.earlier_copy = ttk.Button(c, text="Copy hash", command=lambda: self.copy_text(self.earlier_hash), state="disabled")
+        self.earlier_copy.pack(side="left", padx=(8, 0))
         self.earlier = tk.Label(c, text="Picks a folder AppWalk wrote and checks its hash chain and every file.", font=self.f_small, bg=CARD, fg=MUTED,
                                 anchor="w", justify="left", wraplength=560)
         self.earlier.pack(side="left", padx=12)
@@ -842,6 +859,18 @@ class App:
         if self.export:
             self.open_path(self.export)
 
+    def copy_text(self, text):
+        if text:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(text)
+
+    def latest_hash(self, export):
+        try:
+            with open(os.path.join(export, "manifest.json"), encoding="utf-8") as fh:
+                return json.load(fh)["hash_chain"]["last_row_hash"]
+        except (OSError, ValueError, KeyError):
+            return ""
+
     def copy_hash(self):
         self.root.clipboard_clear()
         self.root.clipboard_append(self.hash_value.get())
@@ -861,6 +890,59 @@ class App:
         self.result_text.configure(state="disabled")
         self.open_btn.configure(state="normal" if os.path.exists(os.path.join(self.export, "transcript.html")) else "disabled")
         self.report_btn.configure(state="normal" if os.path.exists(os.path.join(self.export, "report.pdf")) else "disabled")
+
+    # ---- the phone's identity, from Settings > About phone ----
+
+    def identify_now(self):
+        """Opens About phone on the phone and keeps screenshots of it, chained, in an export of its own; where
+        the phone gives the screen's text, the IMEI, phone number and serial are read and offered for the Note."""
+        serial = self.serial()
+        if not serial:
+            self.identity_note.configure(text="Choose a phone first.")
+            return
+        out = self.out.get() or filedialog.askdirectory(title="Where to save the About phone export",
+                                                        initialdir=os.path.expanduser("~"))
+        if not out:
+            return
+        self.out.set(out)
+        self.identity_btn.configure(state="disabled")
+        self.identity_note.configure(text="Opening About phone on the phone and taking screenshots of it...")
+        case = {"examiner": self.examiner.get().strip(), "reference": self.reference.get().strip(), "note": self.notes.get().strip()}
+        label = self.label.get().strip() or "phone"
+
+        def work():
+            try:
+                got = appwalk.identify(serial, out, label, case=case, say=lambda *a: None)
+            except Exception as e:  # say what failed, in the window
+                got = e
+            self.root.after(0, lambda: self.identity_done(got))
+        threading.Thread(target=work, daemon=True).start()
+
+    def identity_done(self, got):
+        self.identity_btn.configure(state="normal")
+        if isinstance(got, Exception):
+            self.identity_note.configure(text=f"Not done: {type(got).__name__}: {got}")
+            return
+        export, found, note = got
+        self.identity_export = export
+        self.identity_hash = self.latest_hash(export)
+        self.identity_copy.configure(state="normal" if self.identity_hash else "disabled")
+        where = os.path.basename(os.path.normpath(export))
+        n = len([f for f in os.listdir(os.path.join(export, "screens"))])
+        note = (f"{n} screenshot(s) of About phone kept in {where}" + ("; the phone gives no text for that screen, so read them there" if note else "")
+                + f". Latest row hash {self.identity_hash}: write it down.")
+        values = [(k, v["value"]) for k in ("model", "imei", "phone_number", "serial_number") for v in found.get(k, [])]
+        if not values:
+            self.identity_note.configure(text=note)
+            return
+        names = {"model": "Model", "imei": "IMEI", "phone_number": "Phone number", "serial_number": "Serial number"}
+        text = "; ".join(f"{names[k]} {v}" for k, v in values)
+        self.identity_note.configure(text="Read: " + text + ". " + note)
+        from tkinter import messagebox
+        if messagebox.askyesno("About phone", "Read from the phone's About phone screen:\n\n" + "\n".join(
+                f"{names[k]}: {v}" for k, v in values) + "\n\nCheck them against the screenshots. Add them to the Note?",
+                parent=self.root):
+            self.notes.set("; ".join(x for x in (self.notes.get().strip(), text) if x))
 
     # ---- a file added after the walk (an app's own chat export, for example) ----
 
@@ -919,7 +1001,13 @@ class App:
             return
         got = self.add_file_to(d)
         if got:
-            self.earlier.configure(text=got[0])
+            text, ok, last = got
+            # Short here, where there is room for two lines; the file's own SHA-256 is in the report.
+            name = text.split(":", 1)[0].replace("Added attachments/", "")
+            self.earlier.configure(text=(f"Added {name} to {os.path.basename(os.path.normpath(d))}. Latest row hash {last}: write this one down."
+                                         if ok and last else text))
+            self.earlier_hash = last or ""
+            self.earlier_copy.configure(state="normal" if self.earlier_hash else "disabled")
 
     def verify_now(self):
         if not self.export:

@@ -997,6 +997,162 @@ def write_export(log, device, package, app_version, summary, args_used):
     return manifest
 
 
+# ---- The phone's identity, read from Settings > About phone ----
+
+# Labels seen on About phone screens, lower case, in the languages tried. A value is the text right after
+# its label in the view tree. Add a label only from a screen that showed it.
+IDENTITY_LABELS = {
+    "phone_number": ("phone number", "my phone number", "número de teléfono", "numero de telefono", "mi número de teléfono"),
+    "serial_number": ("serial number", "número de serie", "numero de serie"),
+    "model": ("model", "model name", "modelo", "nombre del modelo"),
+}
+
+
+def imei_ok(digits):
+    """True for 15 digits whose last is the IMEI check digit (the Luhn formula of 3GPP TS 23.003)."""
+    if not re.fullmatch(r"\d{15}", digits):
+        return False
+    total = 0
+    for i, c in enumerate(reversed(digits)):
+        d = int(c)
+        if i % 2:
+            d *= 2
+            d -= 9 if d > 9 else 0
+        total += d
+    return total % 10 == 0
+
+
+def identity_from_trees(export):
+    """IMEIs, phone numbers, serial and model as the About phone screens' view trees reported them, each
+    with the screenshot it was read from. An IMEI counts only when its check digit is right."""
+    found = {"imei": [], "phone_number": [], "serial_number": [], "model": []}
+    seen = set()
+    with open(os.path.join(export, "actions.jsonl"), encoding="utf-8") as f:
+        rows = [json.loads(x) for x in f if x.strip()]
+    for r in rows:
+        if r["action"] != "screenshot":
+            continue
+        d = json.loads(r["detail"])
+        texts = [n.get("text") for n in ET.parse(os.path.join(export, "trees", d["tree_file"])).getroot().iter("node")
+                 if n.get("text")]
+        for i, t in enumerate(texts):
+            digits = re.sub(r"[\s-]", "", t)
+            if imei_ok(digits) and ("imei", digits) not in seen:
+                seen.add(("imei", digits))
+                found["imei"].append({"value": digits, "step": d["step"]})
+            label = t.strip().lower().rstrip(":")
+            for key, names in IDENTITY_LABELS.items():
+                if i + 1 < len(texts) and (label in names or re.fullmatch(r"(" + "|".join(map(re.escape, names)) + r") ?\d", label)):
+                    v = texts[i + 1].strip()
+                    if v and (key, v) not in seen:
+                        seen.add((key, v))
+                        found[key].append({"value": v, "step": d["step"], "label": t.strip()})
+    return found
+
+
+def identify(serial, out, device_label, case=None, say=print):
+    """Opens Settings > About phone, walks it top to bottom and reads the phone's identity from its view
+    trees. Where the phone gives no view tree there (a Pixel 7a on Android 17 did not, 13 November 2026),
+    the screenshots are still kept and chained, for the examiner to read. The values found go into a
+    chained row; the examiner confirms them before they are used. Returns (export, found, note)."""
+    dev = AdbDevice(serial)
+    dev.shell("am start -a android.settings.DEVICE_INFO_SETTINGS")
+    time.sleep(2)
+    # Stock Android's About phone shows an Uptime line that changes every second, so the screen is never
+    # still and uiautomator never gives its tree (Pixel 7a on Android 17, emulator on Android 15). One quick
+    # try decides: a tree now means the walk can read it; none means screenshots only, without waiting.
+    probe = dev.adb("exec-out", "uiautomator", "dump", "/dev/tty", timeout=90)
+    readable = b"</hierarchy>" in probe
+    if readable:
+        r = run_job(serial, "com.android.settings", out, "phone-identity", device_label, reveal="below", rewind=True,
+                    max_screens=15, case=case, say=say)
+        export = r["export"]
+    else:
+        export = empty_export(dev, out, "phone-identity", device_label, case)
+    note = ""
+    if not readable or r["summary"]["screens"] == 0:
+        dev.shell("am start -a android.settings.DEVICE_INFO_SETTINGS")
+        time.sleep(1)
+        note = screenshots_without_tree(export, dev)
+    found = identity_from_trees(export)
+    log = AppendLog(export, dev)
+    log.add("system_event", "identity_read", {"found": found, "note": note,
+                                               "how": "From the view trees of Settings > About phone; an IMEI only when its check digit is right."})
+    log.close()
+    refresh_manifest(export, log.rows, dev)
+    return export, found, note
+
+
+def nearly_same(a, b):
+    """True when two screenshots differ in under 1% of their pixels: a clock that ticks, not a scroll."""
+    if a is None or b is None:
+        return False
+    if a == b:
+        return True
+    if not pixels_available():
+        return False
+    from PIL import Image, ImageChops
+    x, y = Image.open(io.BytesIO(a)).convert("L"), Image.open(io.BytesIO(b)).convert("L")
+    if x.size != y.size:
+        return False
+    diff = ImageChops.difference(x, y).point(lambda v: 255 if v > 24 else 0)
+    return diff.histogram()[255] < 0.01 * x.size[0] * x.size[1]
+
+
+def empty_export(dev, out, scenario, device_label, case=None):
+    """An export with no walk in it yet: the folder, the log's first rows and a manifest, for steps that
+    add their own rows (the About phone screenshots)."""
+    stamp = dev.stamp()
+    t = datetime.fromtimestamp(stamp["utc_ms"] / 1000, tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    safe = lambda x: re.sub(r"[^A-Za-z0-9._-]", "_", x) or "unnamed"
+    export = os.path.join(out, f"kdl_{safe(scenario)}_{safe(device_label)}_{t}")
+    os.makedirs(export)
+    log = Log(export, scenario, device_label, dev)
+    case = {k: v for k, v in (case or {}).items() if v}
+    if case:
+        log.add("system_event", "case_information", case)
+    log.add("system_event", "device_state", dict(device_facts(dev.serial), when="before the run"))
+    summary = {"item": None, "screens": 0, "scrolls": 0, "rewind_scrolls": 0, "rewind_end_confirmed": None,
+               "end_confirmed": None, "gaps": 0, "gaps_retried": 0, "unsettled": 0, "blank": 0, "pauses": 0,
+               "stop_reason": "no walk: the screen's view tree could not be read, so only screenshots were taken"}
+    write_export(log, dev, "com.android.settings", dev.app_version("com.android.settings"), summary,
+                 {"mode": "phone identity", "serial": dev.serial})
+    return export
+
+
+def screenshots_without_tree(export, dev, most=8):
+    """Screenshots only, scrolling down, each hash in a chained row, until a scroll no longer changes the
+    screen (a ticking clock aside): for a screen whose view tree cannot be read. Returns a note saying so."""
+    # Settings can reopen the page where it was left: go to the top first, until a scroll changes nothing.
+    top = dev.screenshot()
+    for _ in range(10):
+        dev.swipe(540, 900, 540, 1700, 400)
+        time.sleep(0.8)
+        now = dev.screenshot()
+        if nearly_same(now, top):
+            break
+        top = now
+    log = AppendLog(export, dev)
+    prev, n = None, 0
+    for i in range(most):
+        png = dev.screenshot()
+        if nearly_same(png, prev):
+            break
+        n += 1
+        name = f"nt{n:02d}_{uuid.uuid4().hex}.png"
+        with open(os.path.join(export, "screens", name), "wb") as f:
+            f.write(png)
+        log.add("auto_event", "screenshot_without_tree", {"png_file": name, "png_sha256": sha256(png), "n": n,
+                                                          "why": "the phone gave no view tree for this screen"})
+        prev = png
+        dev.swipe(540, 1700, 540, 900, 600)
+        time.sleep(1.5)
+    log.close()
+    refresh_manifest(export, log.rows, dev)
+    return (f"The phone gave no view tree for About phone, so nothing could be read from it; {n} screenshot(s) "
+            "of it are kept and chained, for the values to be read from them.")
+
+
 # ---- Files added to an export after the walk ----
 
 class AppendLog(Log):
@@ -1094,6 +1250,10 @@ def refresh_manifest(export, rows, dev=None):
     manifest["hash_chain"] = {"rows": len(rows), "last_seq": rows[-1]["seq"], "last_row_hash": rows[-1]["row_hash"],
                               "first_break_seq": bad}
     manifest["attachments"] = [json.loads(r["detail"]) for r in rows if r["action"] == "file_attached"]
+    manifest["screenshots_without_tree"] = [json.loads(r["detail"]) for r in rows if r["action"] == "screenshot_without_tree"]
+    found = [json.loads(r["detail"]) for r in rows if r["action"] == "identity_read"]
+    if found:
+        manifest["identity"] = found[-1]
     with open(os.path.join(export, "manifest.json"), "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2, ensure_ascii=False)
     try:
@@ -1139,6 +1299,12 @@ def verify_export(folder):
                 bad += 1
                 res.append((f"{sub}/{name}", "MISSING" if not os.path.exists(p) else "MISMATCH with the hash in its chained row", False))
     res.append(("images and view trees against chained rows", f"{n - bad} of {n} match", bad == 0))
+    nt = [json.loads(r["detail"]) for r in rows if r["action"] == "screenshot_without_tree"]
+    if nt:
+        bad_nt = [d["png_file"] for d in nt if not os.path.exists(os.path.join(folder, "screens", d["png_file"]))
+                  or sha256(read_bytes(os.path.join(folder, "screens", d["png_file"]))) != d["png_sha256"]]
+        res.append(("screenshots without a view tree against chained rows", f"{len(nt) - len(bad_nt)} of {len(nt)} match", not bad_nt))
+        listed |= {("screens", d["png_file"]) for d in nt}
     att = [json.loads(r["detail"]) for r in rows if r["action"] == "file_attached"]
     if att:
         bad_att = [d["file"] for d in att if not os.path.exists(os.path.join(folder, "attachments", d["file"]))
@@ -1319,6 +1485,11 @@ def main(argv=None):
     tr.add_argument("export")
     rp = sub.add_parser("report", help="write report.pdf for an export (needs ReportLab)")
     rp.add_argument("export")
+    idp = sub.add_parser("identify", help="open Settings > About phone and read the phone's identity (IMEI, phone "
+                         "number, serial) from it, into an export of its own")
+    idp.add_argument("--serial", required=True)
+    idp.add_argument("--out", required=True)
+    idp.add_argument("--device-label", default="phone")
     at = sub.add_parser("attach", help="add a file to an export, such as an app's own chat export, pulled from the "
                         "phone or copied from this computer; it goes into the hash chain")
     at.add_argument("export")
@@ -1336,6 +1507,18 @@ def main(argv=None):
         for name, result, ok in res:
             print(("ok      " if ok else "WARNING ") + f"{name}: {result}")
         return 0 if all(ok for _, _, ok in res) else 1
+
+    if a.cmd == "identify":
+        export, found, note = identify(a.serial, a.out, a.device_label)
+        print("Export:", export)
+        if note:
+            print(note)
+        for key in ("model", "imei", "phone_number", "serial_number"):
+            for v in found[key]:
+                print(f"{key}: {v['value']}  (screenshot S{v['step']})")
+        if not any(found.values()):
+            print("Nothing read. Check the screenshots of About phone in the export.")
+        return 0
 
     if a.cmd == "attach":
         if a.from_phone and not a.serial:

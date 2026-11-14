@@ -399,6 +399,25 @@ in `--note` how it got there.
 An app's export holds the whole conversation, whatever part of it was walked, and each app has its
 own limits on how much it includes.
 
+### The phone's identity: About phone
+
+**Document About phone**, on the Phone step under This examination, opens Settings > About phone on
+the phone and keeps screenshots of it, top to bottom, in an export of its own with the hash chain.
+From the command line:
+
+```bash
+python3.12 appwalk.py identify --serial <adb serial> --out <folder> --device-label <label>
+```
+
+adb cannot read the IMEI or the phone number on current Android; the About phone screen shows them.
+Where the phone gives that screen's text, AppWalk reads the IMEI (only when its check digit is
+right), the phone number and the serial, and offers them for the Note after you check them against
+the screenshots. On stock Android it cannot: About phone shows an Uptime line that changes every
+second, and Android gives a screen's text only once it is still. That was so on a Pixel 7a with
+Android 17 and on the Android 15 emulator (13 November 2026): the screenshots were kept, the IMEI and
+number are in them, and nothing was read. Reading the text is tested only on made-up screens so far;
+an examiner reports that a Samsung gives it.
+
 ## 12. Teach AppWalk an app
 
 Without a profile, the transcript gives every line of an app as plain text: no sent or received, no
@@ -661,10 +680,11 @@ python3 appwalk.py transcript <export folder>
 python3 appwalk.py report <export folder>
 python3 appwalk.py teach <export folder>
 python3 appwalk.py attach <export folder> --file <file>
+python3 appwalk.py identify --serial <adb serial> --out <folder>
 ```
 
-check an export, write its transcript again, write its report again, open the Teach window on it, and
-add a file to it (section 11).
+check an export, write its transcript again, write its report again, open the Teach window on it,
+add a file to it, and document the phone's About phone screen (section 11).
 A walk exits with 2 when its result is not complete or not confirmed; `verify` exits with 1 when a
 check fails.
 

@@ -804,6 +804,47 @@ class ReportTextTests(unittest.TestCase):
 
 
 @unittest.skipUnless(appwalk.pixels_available(), "needs Pillow")
+class IdentityTests(unittest.TestCase):
+    """Reading the phone's identity from About phone's view tree. No phone tried so far gives one (stock
+    Android's Uptime line keeps the screen from ever being still), so these use a made-up tree."""
+
+    def test_imei_check_digit(self):
+        self.assertTrue(appwalk.imei_ok("490154203237518"))      # a valid example IMEI, check digit 8
+        self.assertFalse(appwalk.imei_ok("490154203237519"))     # one digit off
+        self.assertFalse(appwalk.imei_ok("49015420323751"))      # fourteen digits
+
+    def test_values_after_their_labels(self):
+        out = run(FakePhone(count=5, scrollable=False))[0]
+        rows = [json.loads(x) for x in open(os.path.join(out, "actions.jsonl"), encoding="utf-8")]
+        shot = next(json.loads(r["detail"]) for r in rows if r["action"] == "screenshot")
+        tree = os.path.join(out, "trees", shot["tree_file"])
+        nodes = "".join(f'<node class="android.widget.TextView" package="com.android.settings" text="{t}" bounds="[0,{i * 60}][500,{i * 60 + 50}]" />'
+                        for i, t in enumerate(["Phone number", "+1 555-123-4567", "IMEI", "490154203237518",
+                                               "IMEI (slot 2)", "490154203237519", "Serial number", "R5CT1234ABC"]))
+        with open(tree, "w", encoding="utf-8") as f:
+            f.write(f'<?xml version="1.0"?><hierarchy>{nodes}</hierarchy>')
+        found = appwalk.identity_from_trees(out)
+        self.assertEqual([v["value"] for v in found["imei"]], ["490154203237518"])    # the wrong check digit is left out
+        self.assertEqual([v["value"] for v in found["phone_number"]], ["+1 555-123-4567"])
+        self.assertEqual([v["value"] for v in found["serial_number"]], ["R5CT1234ABC"])
+
+    def test_a_ticking_clock_is_not_a_scroll(self):
+        if not appwalk.pixels_available():
+            self.skipTest("needs Pillow")
+        from PIL import Image, ImageDraw
+        def shot(clock_y, extra=0):
+            im = Image.new("RGB", (400, 800), "white")
+            d = ImageDraw.Draw(im)
+            for i in range(10):
+                d.rectangle([20, 40 + i * 70 + extra, 380, 90 + i * 70 + extra], fill="black")
+            d.rectangle([20, clock_y, 60, clock_y + 10], fill="gray")
+            b = io.BytesIO()
+            im.save(b, "PNG")
+            return b.getvalue()
+        self.assertTrue(appwalk.nearly_same(shot(760), shot(762)))       # only the clock moved
+        self.assertFalse(appwalk.nearly_same(shot(760), shot(760, 35)))  # the list moved
+
+
 class AttachTests(unittest.TestCase):
     """A file added after the walk (an app's own chat export) goes into the hash chain."""
 
