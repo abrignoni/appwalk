@@ -1049,6 +1049,8 @@ def identity_from_trees(export):
                  if n.get("text")]
         for i, t in enumerate(texts):
             digits = re.sub(r"[\s-]", "", t)
+            # The *#06# dialog adds the software version: "15 digits / 2 digits" (abrignoni/appwalk#24).
+            digits = re.sub(r"^(\d{15})/\d{1,2}$", r"\1", digits)
             if imei_ok(digits) and ("imei", digits) not in seen:
                 seen.add(("imei", digits))
                 found["imei"].append({"value": digits, "step": d["step"]})
@@ -1114,11 +1116,17 @@ def identify(serial, out, device_label, case=None, say=print):
         searched = imei_by_settings_search(export, dev, say)
         note = " ".join(x for x in (note, searched) if x)
         found = identity_from_trees(export)
+    # The last way: the *#06# dialog. It opens the dialer, so it runs only when nothing else gave an IMEI.
+    if not found["imei"]:
+        dialled = imei_by_dialer(export, dev, say)
+        note = " ".join(x for x in (note, dialled) if x)
+        found = identity_from_trees(export)
     log = AppendLog(export, dev)
     log.add("system_event", "identity_read", {"found": found, "note": note,
                                                "how": "From the view trees of Settings > About phone; when it gave no IMEI, of a "
-                                                      "row known to lead to it, or else of the screen Settings' own search opens for "
-                                                      "IMEI; an IMEI only when its check digit is right."})
+                                                      "row known to lead to it, or of the screen Settings' own search opens for "
+                                                      "IMEI, or else of the dialog *#06# opens; an IMEI only when its check digit "
+                                                      "is right."})
     log.close()
     refresh_manifest(export, log.rows, dev)
     return export, found, note
@@ -1188,6 +1196,11 @@ def center(n):
     return (l + r) // 2, (t + b) // 2
 
 
+# The search field's class: an AutoCompleteTextView on a moto g47 (Android 16) and a TCL T613P (Android 14),
+# found by Maxitelmo (abrignoni/appwalk#23). It is also left out of the results, or it is tapped as one.
+SEARCH_FIELD_CLASSES = ("EditText", "AutoCompleteTextView")
+
+
 def imei_by_settings_search(export, dev, say=print, word="IMEI"):
     """When About phone gave no IMEI: opens Settings' own search, types IMEI (the same word in every
     language) and opens the first result. On a moto g47 (Android 16) the IMEIs are not on About phone but
@@ -1204,7 +1217,7 @@ def imei_by_settings_search(export, dev, say=print, word="IMEI"):
             log.add("system_event", "settings_search", {"result": "the search screen gave no view tree"})
             return f"Settings' search for {word} could not be used: its screen gave no view tree."
         tree = Tree(raw)
-        field = next((n for n in tree.nodes() if (n.get("class") or "").endswith("EditText")), None)
+        field = next((n for n in tree.nodes() if (n.get("class") or "").endswith(SEARCH_FIELD_CLASSES)), None)
         if field is None:
             log.add("system_event", "settings_search", {"result": "no search field on the search screen"})
             return f"Settings' search for {word} could not be used: no search field was found."
@@ -1213,7 +1226,7 @@ def imei_by_settings_search(export, dev, say=print, word="IMEI"):
         time.sleep(3)
         raw = tree_now(dev)
         hits = [n for n in (Tree(raw).nodes() if raw else []) if word in (n.get("text") or "")
-                and not (n.get("class") or "").endswith("EditText") and box_of(n)]
+                and not (n.get("class") or "").endswith(SEARCH_FIELD_CLASSES) and box_of(n)]
         if not hits:
             log.add("system_event", "settings_search", {"typed": word, "result": f"no result names {word}"})
             return f"Settings' search for {word} found nothing."
@@ -1225,14 +1238,163 @@ def imei_by_settings_search(export, dev, say=print, word="IMEI"):
         log.close()
         refresh_manifest(export, log.rows, dev)
     if tree_now(dev) is None:
-        return (f"Settings' search for {word} opened a screen that gives no view tree either (About phone itself, with its "
-                "ticking clock, on stock Android); see the screenshots of About phone.")
+        # The screen it opened is kept as screenshots, as About phone is: on a TCL T613P (Android 14) it was
+        # "Estado", which never gave a tree, and the IMEI is on it (abrignoni/appwalk#23).
+        shots = screenshots_without_tree(export, dev, what=f"the screen Settings' search opened for {word}", go_to_top=False)
+        return f"Settings' search for {word} opened a screen that gives no view tree. {shots}"
     log = AppendLog(export, dev)
     walker = Walker(dev, log, "com.android.settings", reveal="below", max_screens=15, rewind=True, say=say, by_tree=True)
     s = walker.run()
     log.close()
     refresh_manifest(export, log.rows, dev)
     return f"Settings' search for {word} opened a screen with a view tree; {s['screens']} screenshot(s) of it were walked and read."
+
+
+# The dialer's keys for *#06#, by resource id. The same on the Samsung dialer and the Google dialer (moto g47,
+# TCL T613P, Samsung SM-G990E: abrignoni/appwalk#24; emulator, Android 15). Only these keys are ever tapped:
+# never the call button.
+DIAL_KEYS = ("star", "pound", "zero", "six", "pound")
+# The key that deletes the 0 the dialer was opened with: deleteButton on the Google dialer (emulator,
+# Android 15). Add another id only from a dialer that showed it.
+DELETE_KEYS = ("deleteButton",)
+
+
+def call_log_state(dev):
+    """The call log's number of entries and its newest entry's id and date, nothing else: proof that the
+    dialer added no entry. None when the phone does not let adb read it."""
+    out = dev.shell("content query --uri content://call_log/calls --projection _id:date")
+    rows = re.findall(r"_id=(\d+), date=(\d+)", out)
+    if not rows and "No result found" not in out:
+        return None
+    newest = max(rows, key=lambda r: int(r[0])) if rows else None
+    return {"entries": len(rows), "newest_id": int(newest[0]) if newest else None,
+            "newest_date_ms": int(newest[1]) if newest else None}
+
+
+def dialog_imeis(tree):
+    """IMEIs a *#06# dialog shows. The dialog writes each as "15 digits / 2-digit software version", so the
+    first 15 digits are taken; an IMEI counts only when its check digit is right."""
+    found = []
+    for n in tree.nodes():
+        m = re.fullmatch(r"\s*(\d{15})\s*(?:/\s*\d{1,2}\s*)?", n.get("text") or "")
+        if m and imei_ok(m.group(1)) and m.group(1) not in found:
+            found.append(m.group(1))
+    return found
+
+
+def imei_by_dialer(export, dev, say=print):
+    """The last way, when About phone, a known row and Settings' search gave no IMEI: dials *#06# on the
+    phone's own dialer, tapping its keys by their ids, and keeps the dialog it opens. Proposed and tried by
+    Maxitelmo on a Samsung SM-G990E, a moto g47 and a TCL T613P (abrignoni/appwalk#24); on the TCL it was the
+    only way. A code passed in the intent shows in the field but does not run, and key events did not reach
+    the field on the moto g47, so the keys are tapped. Only the dialog is kept: its view tree is its own
+    window, and the screenshot is cut to the dialog's bounds, because the dialer behind it can show contacts
+    and recent calls. The call log's size and newest entry are recorded before and after. Opening the dialer
+    shows in the phone's app usage and recents, like any app AppWalk opens. Returns a note."""
+    log = AppendLog(export, dev)
+    before = call_log_state(dev)
+    try:
+        # A number in the intent opens the keypad (with none, the Samsung dialer opened another tab); it is
+        # deleted before the code is typed.
+        dev.shell("am start -a android.intent.action.DIAL -d tel:0 -f 0x10008000")
+        time.sleep(2.5)
+        raw = tree_now(dev)
+        tree = Tree(raw) if raw else None
+        pkg = tree.front_package if tree else None
+        def key(name):
+            return next((n for n in tree.nodes() if (n.get("resource-id") or "").endswith(f":id/{name}") and box_of(n)), None)
+        keys = {k: key(k) for k in set(DIAL_KEYS)} if tree else {}
+        keys["delete"] = next((key(k) for k in DELETE_KEYS if key(k) is not None), None) if tree else None
+        missing = sorted(k for k, n in keys.items() if n is None) if tree else ["the dialer gave no view tree"]
+        if missing:
+            log.add("system_event", "dial_imei_code", {"dialer": pkg, "result": "keys not found", "missing": missing,
+                                                      "call_log_before": before})
+            dev.back()
+            return "The dialer's keys for *#06# were not found, so it was not dialled."
+        dev.tap(*center(keys["delete"]))
+        for k in DIAL_KEYS:
+            time.sleep(0.4)
+            dev.tap(*center(keys[k]))
+        time.sleep(2.5)
+        raw = tree_now(dev)
+        dialog = Tree(raw) if raw else None
+        imeis = dialog_imeis(dialog) if dialog else []
+        detail = {"dialer": pkg, "typed": "*#06#", "dialog_package": dialog.front_package if dialog else None,
+                  "imeis_in_dialog": len(imeis), "call_log_before": before}
+        if dialog is None or not imeis:
+            detail["result"] = "no dialog with an IMEI" if dialog else "the screen gave no view tree"
+            log.add("system_event", "dial_imei_code", detail)
+            dev.back()
+            dev.back()
+            return "*#06# was dialled but no dialog with an IMEI was read."
+        log.add("system_event", "dial_imei_code", detail)
+        png = dev.screenshot()
+        png, cut = crop_png(png, dialog_box(dialog))
+        steps = [json.loads(r["detail"]).get("step", 0) for r in log.rows if r["action"] == "screenshot"]
+        step = max(steps, default=0) + 1
+        entry = uuid.uuid4().hex
+        png_name, tree_name = f"{step:04d}_{entry}.png", f"{step:04d}_{entry}.xml"
+        with open(os.path.join(export, "screens", png_name), "wb") as f:
+            f.write(png)
+        with open(os.path.join(export, "trees", tree_name), "wb") as f:
+            f.write(dialog.xml)
+        d = {"step": step, "item": "*#06#", "screen_in_this_walk": 1, "png_file": png_name, "png_sha256": sha256(png),
+             "png_status": "ok", "tree_file": tree_name, "tree_sha256": sha256(dialog.xml),
+             "tree_fingerprint": dialog.fingerprint(dialog.front_package), "capture_attempts": 1,
+             "password_fields_removed": dialog.secret_fields,
+             "png_cut_to_dialog": list(dialog_box(dialog)) if cut else None,
+             "why": "the dialog *#06# opens; the picture is cut to the dialog, so the dialer behind it is not kept"
+                    if cut else "the dialog *#06# opens; the picture could not be cut, so it is the whole screen"}
+        log.add("auto_event", "screenshot", d, entry_id=entry, app_package=dialog.front_package,
+                conversation_id="*#06#", screenshot={"file": png_name, "sha256": d["png_sha256"], "status": "ok"})
+        ok = next((n for n in dialog.nodes() if (n.get("resource-id") or "").endswith("android:id/button1") and box_of(n)), None)
+        if ok is not None:
+            dev.tap(*center(ok))
+        else:
+            dev.back()
+        time.sleep(1)
+        dev.back()
+        time.sleep(1)
+        after = call_log_state(dev)
+        same = None if before is None or after is None else before == after
+        log.add("system_event", "call_log_checked", {"before": before, "after": after, "unchanged": same})
+    finally:
+        log.close()
+        refresh_manifest(export, log.rows, dev)
+    if same is False:
+        tail = " The call log CHANGED while the dialer was open: see the call_log_checked row."
+    elif same is None:
+        tail = " The call log could not be read, so whether the dialer added an entry is not known."
+    else:
+        tail = " The call log was the same before and after."
+    return f"*#06# was dialled and its dialog kept (cut to the dialog); it showed {len(imeis)} IMEI(s).{tail}"
+
+
+def dialog_box(tree):
+    """The dialog's own box: its content node (android:id/content), or else the box around every node with
+    text. The window around it can be the whole screen, with the dialer behind it (emulator, Android 15)."""
+    content = [box_of(n) for n in tree.nodes() if n.get("resource-id") == "android:id/content" and box_of(n)]
+    if content:
+        return min(content, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]))
+    boxes = [box_of(n) for n in tree.nodes() if (n.get("text") or "").strip() and box_of(n)]
+    if not boxes:
+        return None
+    return (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
+
+
+def crop_png(png, box):
+    """The screenshot cut to box (left, top, right, bottom), and whether it was cut. Without Pillow it cannot
+    be, and the whole screenshot is returned."""
+    if box is None or not pixels_available():
+        return png, False
+    from PIL import Image
+    im = Image.open(io.BytesIO(png))
+    l, t, r, b = box
+    if not (0 <= l < r <= im.size[0] and 0 <= t < b <= im.size[1]):
+        return png, False
+    out = io.BytesIO()
+    im.crop(box).save(out, format="PNG")
+    return out.getvalue(), True
 
 
 def nearly_same(a, b):
@@ -1272,12 +1434,12 @@ def empty_export(dev, out, scenario, device_label, case=None):
     return export
 
 
-def screenshots_without_tree(export, dev, most=8, why=None):
+def screenshots_without_tree(export, dev, most=8, why=None, what="About phone", go_to_top=True):
     """Screenshots only, scrolling down, each hash in a chained row, until a scroll no longer changes the
     screen (a ticking clock aside): for a screen whose view tree cannot be read. Returns a note saying so."""
     # Settings can reopen the page where it was left: go to the top first, until a scroll changes nothing.
     top = dev.screenshot()
-    for _ in range(10):
+    for _ in range(10 if go_to_top else 0):
         dev.swipe(540, 900, 540, 1700, 400)
         time.sleep(0.8)
         now = dev.screenshot()
@@ -1294,7 +1456,7 @@ def screenshots_without_tree(export, dev, most=8, why=None):
         name = f"nt{n:02d}_{uuid.uuid4().hex}.png"
         with open(os.path.join(export, "screens", name), "wb") as f:
             f.write(png)
-        log.add("auto_event", "screenshot_without_tree", {"png_file": name, "png_sha256": sha256(png), "n": n,
+        log.add("auto_event", "screenshot_without_tree", {"png_file": name, "png_sha256": sha256(png), "n": n, "screen": what,
                                                           "why": why or "the phone gave no view tree for this screen"})
         prev = png
         dev.swipe(540, 1700, 540, 900, 600)
@@ -1302,9 +1464,9 @@ def screenshots_without_tree(export, dev, most=8, why=None):
     log.close()
     refresh_manifest(export, log.rows, dev)
     if why:
-        return (f"The walk of About phone took no screenshot ({why}), so nothing was read from it; {n} screenshot(s) "
+        return (f"The walk of {what} took no screenshot ({why}), so nothing was read from it; {n} screenshot(s) "
                 "of it were then taken without its text and are kept and chained, for the values to be read from them.")
-    return (f"The phone gave no view tree for About phone, so nothing could be read from it; {n} screenshot(s) "
+    return (f"The phone gave no view tree for {what}, so nothing could be read from it; {n} screenshot(s) "
             "of it are kept and chained, for the values to be read from them.")
 
 

@@ -97,7 +97,8 @@ def save_settings(values):
 
 
 IDENTITY_HINT = ("Opens Settings > About phone and keeps screenshots of it, in the hash chain. Where the phone gives "
-                 "the screen's text, the IMEI, phone number and serial are read for you to check.")
+                 "the screen's text, the IMEI, phone number and serial are read for you to check. With no IMEI "
+                 "there, it tries a known row, Settings' search, and last the *#06# dialog.")
 
 
 class App:

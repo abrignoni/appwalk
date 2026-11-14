@@ -1031,6 +1031,161 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual([v["value"] for v in found["imei"]], ["490154203237518"])     # the EID is not an IMEI
         self.assertEqual([v["value"] for v in found["model"]], ["moto test"])
 
+    def test_star_hash_06_hash_is_tapped_key_by_key_and_only_the_dialog_kept(self):
+        # A Google dialer as on the emulator (Android 15) and abrignoni/appwalk#24, with made-up values.
+        if not appwalk.pixels_available():
+            self.skipTest("needs Pillow")
+        keys = {"deleteButton": (933, 1196, 1080, 1340), "star": (32, 1945, 355, 2113), "zero": (377, 1945, 701, 2113),
+                "pound": (723, 1945, 1047, 2113), "six": (723, 1565, 1047, 1733)}
+        call = (413, 2158, 667, 2305)
+        D = "com.google.android.dialer"
+
+        class Dialer(FakePhone):
+            screen, taps, calls = "settings", [], 4
+
+            def shell(self, cmd):
+                if "android.intent.action.DIAL" in cmd:
+                    self.screen, self.taps = "dialer", []
+                if "call_log" in cmd:
+                    return "".join(f"Row: {i} _id={i + 1}, date={1_800_000_000_000 + i}\n" for i in range(self.calls))
+                return ""
+
+            def tap(self, x, y):
+                if call[0] <= x <= call[2] and call[1] <= y <= call[3]:
+                    raise AssertionError("the call button was tapped")
+                hit = next((k for k, b in keys.items() if b[0] <= x <= b[2] and b[1] <= y <= b[3]), None)
+                if self.screen == "dialer":
+                    self.taps.append(hit)
+                    if self.taps == ["deleteButton", "star", "pound", "zero", "six", "pound"]:
+                        self.screen = "dialog"
+                elif self.screen == "dialog" and 786 <= x <= 954:
+                    self.screen = "dialer"
+
+            def back(self):
+                self.screen = "dialer" if self.screen == "dialog" else "home"
+
+            def tree_raw(self):
+                if self.screen == "dialer":
+                    nodes = "".join(f'<node class="android.widget.FrameLayout" package="{D}" resource-id="{D}:id/{k}" text="" '
+                                    f'bounds="[{b[0]},{b[1]}][{b[2]},{b[3]}]" />' for k, b in keys.items())
+                    nodes += (f'<node class="android.widget.Button" package="{D}" resource-id="{D}:id/dialpad_voice_call_button" '
+                              f'text="Call" bounds="[{call[0]},{call[1]}][{call[2]},{call[3]}]" />'
+                              f'<node class="android.widget.TextView" package="{D}" text="A contact" bounds="[0,300][1080,400]" />')
+                    return f'<?xml version="1.0"?><hierarchy><node package="{D}" bounds="[0,0][1080,2400]">{nodes}</node></hierarchy>'.encode()
+                if self.screen == "dialog":
+                    return (f'<?xml version="1.0"?><hierarchy><node package="{D}" bounds="[0,136][1080,2337]">'
+                            f'<node package="{D}" resource-id="android:id/content" bounds="[63,346][1017,2127]">'
+                            f'<node package="{D}" text="IMEI " bounds="[126,551][229,621]" />'
+                            f'<node package="{D}" resource-id="{D}:id/deviceid_hex" text="490154203237518 / 01" bounds="[126,621][561,685]" />'
+                            f'<node package="{D}" resource-id="android:id/button1" text="OK" bounds="[786,1964][954,2090]" />'
+                            '</node></node></hierarchy>').encode()
+                return super().tree_raw()
+
+            def adb(self, *a, **k):
+                return self.tree_raw() or b"ERROR: could not get idle state."
+
+            def screenshot(self):
+                from PIL import Image
+                b = io.BytesIO()
+                Image.new("RGB", (1080, 2400), (200, 200, 200)).save(b, "PNG")
+                return b.getvalue()
+        phone = Dialer(count=3)
+        out = run(phone)[0]
+        orig_sleep = appwalk.time.sleep
+        appwalk.time.sleep = lambda s: None
+        try:
+            note = appwalk.imei_by_dialer(out, phone, say=lambda *a: None)
+        finally:
+            appwalk.time.sleep = orig_sleep
+        self.assertIn("1 IMEI", note)
+        self.assertIn("same before and after", note)
+        self.assertEqual([v["value"] for v in appwalk.identity_from_trees(out)["imei"]], ["490154203237518"])
+        rows = [json.loads(x) for x in open(os.path.join(out, "actions.jsonl"), encoding="utf-8")]
+        shot = json.loads([r for r in rows if r["action"] == "screenshot"][-1]["detail"])
+        from PIL import Image
+        self.assertEqual(Image.open(os.path.join(out, "screens", shot["png_file"])).size, (1017 - 63, 2127 - 346))
+        tree = open(os.path.join(out, "trees", shot["tree_file"]), encoding="utf-8").read()
+        self.assertNotIn("A contact", tree)                    # nothing of the dialer behind the dialog
+        checked = json.loads(next(r for r in rows if r["action"] == "call_log_checked")["detail"])
+        self.assertTrue(checked["unchanged"])
+        self.assertTrue(all(ok for _, _, ok in appwalk.verify_export(out)))
+
+        # An entry added while the dialer was open is said plainly.
+        phone2 = Dialer(count=3)
+        out2 = run(phone2)[0]
+        real_tap = phone2.tap
+        def tap_and_call(x, y):
+            real_tap(x, y)
+            if phone2.screen == "dialog":
+                phone2.calls += 1
+        phone2.tap = tap_and_call
+        appwalk.time.sleep = lambda s: None
+        try:
+            self.assertIn("CHANGED", appwalk.imei_by_dialer(out2, phone2, say=lambda *a: None))
+        finally:
+            appwalk.time.sleep = orig_sleep
+
+    def test_a_dialer_without_the_keys_is_not_dialled(self):
+        class NoKeys(FakePhone):
+            taps = []
+
+            def shell(self, cmd):
+                return "No result found." if "call_log" in cmd else ""
+
+            def tap(self, x, y):
+                self.taps.append((x, y))
+
+            def back(self):
+                pass
+
+            def adb(self, *a, **k):
+                return b'<?xml version="1.0"?><hierarchy><node package="x" text="Keypad" bounds="[0,0][100,100]" /></hierarchy>'
+        phone = NoKeys(count=3)
+        out = run(phone)[0]
+        orig_sleep = appwalk.time.sleep
+        appwalk.time.sleep = lambda s: None
+        try:
+            note = appwalk.imei_by_dialer(out, phone, say=lambda *a: None)
+        finally:
+            appwalk.time.sleep = orig_sleep
+        self.assertIn("not dialled", note)
+        self.assertEqual(phone.taps, [])
+
+    def test_the_search_field_can_be_an_autocomplete_text_view(self):
+        # Settings' search as on a moto g47 and a TCL T613P (abrignoni/appwalk#23): the field is an
+        # AutoCompleteTextView, and once IMEI is typed it holds the word too; it must not be taken as a result.
+        S = "com.google.android.settings.intelligence"
+
+        class Search(FakePhone):
+            typed, opened = "", None
+
+            def shell(self, cmd):
+                if cmd.startswith("input text"):
+                    self.typed = cmd.split()[-1]
+                return ""
+
+            def tap(self, x, y):
+                if self.typed and y > 400:
+                    self.opened = (x, y)
+
+            def adb(self, *a, **k):
+                hits = (f'<node class="android.widget.TextView" package="{S}" text="IMEI" bounds="[40,500][1040,600]" />'
+                        if self.typed else "")
+                return (f'<?xml version="1.0"?><hierarchy><node class="android.widget.AutoCompleteTextView" package="{S}" '
+                        f'resource-id="{S}:id/search_src_text" text="{self.typed}" bounds="[100,200][900,300]" />{hits}'
+                        '</hierarchy>').encode()
+        phone = Search(count=3)
+        out = run(phone)[0]
+        orig = appwalk.screenshots_without_tree, appwalk.Walker.run, appwalk.time.sleep
+        appwalk.time.sleep = lambda s: None
+        try:
+            appwalk.Walker.run = lambda self, *a, **k: {"screens": 1}
+            note = appwalk.imei_by_settings_search(out, phone, say=lambda *a: None)
+        finally:
+            appwalk.screenshots_without_tree, appwalk.Walker.run, appwalk.time.sleep = orig
+        self.assertNotIn("no search field", note)
+        self.assertEqual(phone.opened, (540, 550))     # the result, not the field
+
     def test_a_ticking_clock_is_not_a_scroll(self):
         if not appwalk.pixels_available():
             self.skipTest("needs Pillow")

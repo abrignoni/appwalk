@@ -426,7 +426,9 @@ it and walks the screen it opens. On a moto g47 (Android 16) the IMEIs are not o
 screen in, in Device details ("Detalles del dispositivo" in Spanish, the only label known so far; a
 tester found it and wrote this step). Only when there is no such row does AppWalk open Settings' own
 search, type IMEI (the same word in every language) and open the first result, walking it when it
-gives text. On stock Android that result is About phone again, and the note says so. Settings is opened in
+gives text. When it gives none, its screenshots are kept and chained, as About phone's are: on a TCL
+T613P (Android 14) the result was the Status screen, which never gave text, and the IMEI is on it. The
+search field can be an AutoCompleteTextView (moto g47, TCL T613P) as well as an EditText. Settings is opened in
 a task of its own each time, so a page left open earlier is not walked in its place. On these
 screens the walk goes by the screen's text, not its pictures: the moto g47's About phone has an
 animated card that kept a walk by pictures from ever settling. Each step is in the chain. Settings may keep IMEI among its recent searches on
@@ -434,6 +436,20 @@ the phone. A phone number that follows a status ("Solo emergencia" on the moto g
 the status, and the screen's wording is kept beside it. The tester ran the row tap on a moto g47 and
 a Samsung SM-G990E (Android 16): the moto g47's model, both IMEIs and number were read from Device
 details, and the Samsung read as before. The search is tested on the Android 15 emulator only.
+
+When none of these gave an IMEI, AppWalk dials `*#06#` on the phone's own dialer, as the last way.
+It opens the dialer's keypad, deletes the 0 it was opened with and taps the keys `*`, `#`, `0`, `6`,
+`#` by their ids; it never taps any other key, and no key that places a call. If a key is not found,
+nothing is dialled and the note says so. Only the dialog the code opens is kept: its view tree is its
+own window, and its screenshot is cut to the dialog, because the dialer behind it can show contacts
+and recent calls. The dialog shows each IMEI as "15 digits / software version"; the first 15 digits
+are read, only with a right check digit. Before and after, AppWalk records the call log's number of
+entries and its newest entry's id and date (nothing else of it) in the chain, and the note says
+whether they changed. Opening the dialer shows in the phone's app usage and recents, like any app
+AppWalk opens. A tester proposed this and tried it by hand on a Samsung SM-G990E, a moto g47 and a
+TCL T613P: the dialog gave text on all three, its IMEIs matched the ones read elsewhere, and the call
+log did not change. AppWalk's own run of it is tested on the Android 15 emulator only, whose call log
+is empty. The delete key's id is known for the Google dialer only.
 
 ## 12. Teach AppWalk an app
 

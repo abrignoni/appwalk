@@ -417,7 +417,7 @@ def build(export, out_name="report.pdf"):
         story.append(Paragraph(esc("The phone gave no text for these screens, so nothing was read from them. "
                                    "Each picture's SHA-256 is in its chained row."), st["small"]))
         cells = [[Image(os.path.join(export, "screens", d["png_file"]), width=2.0 * inch, height=3.4 * inch, kind="proportional"),
-                  Paragraph(esc(f"{d['n']} · {d['png_sha256'][:16]}"), st["cap"])] for d in nt]
+                  Paragraph(esc(f"{d['n']} · {d.get('screen') or 'About phone'} · {d['png_sha256'][:16]}"), st["cap"])] for d in nt]
         for i in range(0, len(cells), 3):
             three = cells[i:i + 3] + [["", ""]] * (3 - len(cells[i:i + 3]))
             g = Table([[x[0] for x in three], [x[1] for x in three]], colWidths=[2.3 * inch] * 3)
@@ -425,7 +425,7 @@ def build(export, out_name="report.pdf"):
             story.append(KeepTogether([g]))
     ident = manifest.get("identity")
     if ident and any(ident.get("found", {}).values()):
-        story.append(Paragraph("Read from About phone", st["h"]))
+        story.append(Paragraph("Read from the phone's screens", st["h"]))
         names = {"model": "Model", "imei": "IMEI (check digit right)", "phone_number": "Phone number", "serial_number": "Serial number"}
         for k, label in names.items():
             for v in ident["found"].get(k, []):
