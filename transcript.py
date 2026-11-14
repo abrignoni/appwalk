@@ -83,8 +83,22 @@ def frame_lines(tree_path, package, profile=None):
         return []
     described = set((profile or {}).get("described_ids", []))
     bubbles = set((profile or {}).get("bubble_ids", []))
+    # Apps whose views carry no ids can still say what a box is, in its description (Threads on a Pixel 7a,
+    # 13 November 2026: "Chat text message" around each text bubble, "Photo preview" on a picture). A
+    # profile can name those descriptions: text inside such a box is a message, and the box's side is the
+    # message's side; a box described as media becomes one line holding its description.
+    msg_descs = set((profile or {}).get("message_box_descriptions", []))
+    media_descs = set((profile or {}).get("described_box_descriptions", []))
+    msg_boxes = sorted({box(n) for n in node.iter("node") if msg_descs and (n.get("content-desc") or "") in msg_descs and box(n)},
+                       key=lambda x: x[1])
+    # A reply shows the message it answers just above it, in a box with the same description, drawn so it
+    # runs under the reply's box. Bubbles of their own never overlap (Threads, Pixel 7a: 2 of 2 quotes
+    # overlapped the reply by 42 px, 0 of 33 other message boxes overlapped anything), so a box that runs
+    # into the next one is a quote, and its text is not a message.
+    msg_boxes = [x for i, x in enumerate(msg_boxes) if not any(y[1] < x[3] and y[1] > x[1] for y in msg_boxes[i + 1:])]
     parent = {ch: p for p in node.iter() for ch in p}
     taken = set()
+    media_taken = []
     out = []
     for n in node.iter("node"):
         b = box(n)
@@ -103,9 +117,24 @@ def frame_lines(tree_path, package, profile=None):
                 sb = box(q)
                 break
             q = parent.get(q)
+        in_box = next((x for x in msg_boxes if x[0] <= b[0] and x[1] <= b[1] and b[2] <= x[2] and b[3] <= x[3]), None)
+        if in_box:
+            sb = in_box
         if n.get("text"):
             out.append({"text": n.get("text"), "desc": n.get("content-desc") or "", "rid": rid, "parent_rid": parent_rid,
-                        "bounds": b, "side": side_of(sb, cb), "described": False})
+                        "bounds": b, "side": side_of(sb, cb), "described": False, "in_message_box": bool(in_box)})
+        elif n.get("content-desc") and n.get("content-desc") in media_descs:
+            # One line per box: Threads repeats a description on a nested view of the same size, and puts
+            # "Video preview" inside a shared post that is already a line.
+            if any(x[0] <= b[0] and x[1] <= b[1] and b[2] <= x[2] and b[3] <= x[3] for x in media_taken):
+                continue
+            # A box cut by the list's edge is taken from the screenshot that shows it whole: cut off, its
+            # line sits above text the other screenshot holds, and the two no longer line up to be joined.
+            if cb and (b[1] <= cb[1] or b[3] >= cb[3]):
+                continue
+            media_taken.append(b)
+            out.append({"text": n.get("content-desc"), "desc": n.get("content-desc"), "rid": rid, "parent_rid": parent_rid,
+                        "bounds": b, "side": side_of(sb, cb), "described": True, "described_by_box": True})
         elif n.get("content-desc") and short_id(rid) in described:
             q, nested = up, False
             while q is not None:
@@ -189,6 +218,7 @@ def classify(line, profile):
     # (Instagram 455 on a Pixel 7a: plain text bubbles have no id; on the left or right and at least
     # 94 px tall in a known-data chat, while names, labels and the reel's account line were 52 to 68 px
     # or centred). Opt-in, per profile, because it is a shape, not something the app names.
+    unnamed_message = unnamed_message or bool(line.get("in_message_box"))
     least = profile.get("unnamed_message_min_height")
     if not unnamed_message and least and not rid and line["side"] in ("left", "right") and line.get("bounds"):
         b = line["bounds"]

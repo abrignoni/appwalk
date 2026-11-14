@@ -844,6 +844,64 @@ class UnnamedMessageTests(unittest.TestCase):
         self.assertEqual({transcript.classify(x, prof)[0] for x in got}, {"other"})
 
 
+class BoxDescriptionTests(unittest.TestCase):
+    """Threads (Pixel 7a, 13 November 2026) gives its chat views no ids, but describes each bubble:
+    "Chat text message" around a text bubble, "Photo preview" on a picture. Times and labels sit on the
+    same sides, outside any such box."""
+
+    def lines(self):
+        import transcript
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
+
+        def v(desc, b, inner=""):
+            return (f'<node class="android.view.View" package="p" resource-id="" text="" content-desc="{desc}" '
+                    f'bounds="[{b[0]},{b[1]}][{b[2]},{b[3]}]">{inner}</node>')
+
+        def t(text, b, rid=""):
+            return (f'<node class="android.widget.TextView" package="p" resource-id="{"p:id/" + rid if rid else ""}" '
+                    f'text="{text}" content-desc="" bounds="[{b[0]},{b[1]}][{b[2]},{b[3]}]" />')
+        nodes = (t("8:58 PM", (900, 300, 1040, 340), "ig_text")                 # a time on the right, in no box
+                 + v("Chat text message", (100, 360, 600, 440)) + t("how are you", (130, 370, 400, 430))
+                 + v("Chat text message", (500, 460, 1050, 640)) + t("a reply that wraps", (530, 470, 1020, 630))
+                 + v("Chat emoji text message", (100, 660, 300, 840)) + t("\U0001F602", (120, 670, 280, 830), "ig_text")
+                 + v("Photo preview", (100, 860, 600, 1360))
+                 + v("Chat text message", (100, 1440, 800, 1730)) + t("the quoted message", (130, 1460, 780, 1700))
+                 + v("Chat text message", (100, 1688, 600, 1800)) + t("the reply", (130, 1700, 560, 1790))
+                 + t("Seen 9:00 PM", (100, 1380, 400, 1420), "messaging_seen_indicator"))
+        tree = os.path.join(d, "t.xml")
+        with open(tree, "w", encoding="utf-8") as f:
+            f.write('<?xml version="1.0"?><hierarchy><node class="androidx.recyclerview.widget.RecyclerView" package="p" '
+                    'resource-id="" scrollable="true" bounds="[0,250][1080,2100]" text="" content-desc="">'
+                    + nodes + "</node></hierarchy>")
+        prof = {"message_box_descriptions": ["Chat text message", "Chat emoji text message"],
+                "described_box_descriptions": ["Photo preview"],
+                "direction_rules": [{"by": "side", "value": "right", "direction": "sent"},
+                                    {"by": "side", "value": "left", "direction": "received"}]}
+        self.tree = tree
+        return transcript, transcript.frame_lines(tree, "p", prof), prof
+
+    def test_messages_and_pictures_by_the_apps_own_descriptions(self):
+        transcript, got, prof = self.lines()
+        said = {x["text"]: transcript.classify(x, prof)[:2] for x in got}
+        self.assertEqual(said["how are you"], ("message", "received"))
+        self.assertEqual(said["a reply that wraps"], ("message", "sent"))
+        self.assertEqual(said["\U0001F602"], ("message", "received"))
+        self.assertEqual(said["Photo preview"], ("described", "received"))
+        self.assertEqual(said["8:58 PM"][0], "other")            # a time on the right is not a sent message
+        self.assertEqual(said["Seen 9:00 PM"][0], "other")
+        self.assertEqual(said["the reply"], ("message", "received"))
+        self.assertEqual(said["the quoted message"][0], "other")   # its box runs under the reply's: a quote
+
+    def test_without_the_options_nothing_is_a_message(self):
+        import transcript
+        self.lines()
+        bare = {"direction_rules": [{"by": "side", "value": "right", "direction": "sent"}]}
+        got = transcript.frame_lines(self.tree, "p", bare)
+        self.assertNotIn("Photo preview", [x["text"] for x in got])
+        self.assertEqual({transcript.classify(x, bare)[0] for x in got}, {"other"})
+
+
 class PictureOverlapTests(unittest.TestCase):
     """Two screenshots of a list whose shared part holds no text are joined only by the pictures."""
 
