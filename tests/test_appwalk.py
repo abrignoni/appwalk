@@ -1125,6 +1125,48 @@ class IdentityTests(unittest.TestCase):
         finally:
             appwalk.time.sleep = orig_sleep
 
+    def test_a_dialer_that_opens_no_dialog_still_records_the_call_log_after(self):
+        # The Samsung dialer's keys as on a Galaxy A16 5G (Android 16): its delete key is delete_button_image.
+        # There the typed code opened no dialog, so nothing is kept but the call log is still checked after.
+        D = "com.samsung.android.dialer"
+        keys = {"delete_button_image": (784, 1840, 908, 1964), "star": (81, 1554, 387, 1769),
+                "zero": (387, 1554, 693, 1769), "pound": (693, 1554, 999, 1769), "six": (693, 1124, 999, 1339)}
+
+        class Samsung(FakePhone):
+            taps = []
+
+            def shell(self, cmd):
+                return "No result found." if "call_log" in cmd else ""
+
+            def tap(self, x, y):
+                self.taps.append(next(k for k, b in keys.items() if b[0] <= x <= b[2] and b[1] <= y <= b[3]))
+
+            def back(self):
+                pass
+
+            def adb(self, *a, **k):
+                nodes = "".join(f'<node package="{D}" resource-id="{D}:id/{k}" text="" '
+                                f'bounds="[{b[0]},{b[1]}][{b[2]},{b[3]}]" />' for k, b in keys.items())
+                return f'<?xml version="1.0"?><hierarchy><node package="{D}" bounds="[0,0][1080,2340]">{nodes}</node></hierarchy>'.encode()
+        phone = Samsung(count=3)
+        out = run(phone)[0]
+        shots = sum(1 for x in open(os.path.join(out, "actions.jsonl"), encoding="utf-8")
+                    if json.loads(x)["action"] == "screenshot")
+        orig_sleep = appwalk.time.sleep
+        appwalk.time.sleep = lambda s: None
+        try:
+            note = appwalk.imei_by_dialer(out, phone, say=lambda *a: None)
+        finally:
+            appwalk.time.sleep = orig_sleep
+        self.assertEqual(phone.taps, ["delete_button_image", "star", "pound", "zero", "six", "pound"])
+        self.assertIn("no dialog with an IMEI", note)
+        self.assertIn("same before and after", note)
+        rows = [json.loads(x) for x in open(os.path.join(out, "actions.jsonl"), encoding="utf-8")]
+        self.assertEqual(sum(1 for r in rows if r["action"] == "screenshot"), shots)   # nothing of the dialer kept
+        checked = json.loads(next(r for r in rows if r["action"] == "call_log_checked")["detail"])
+        self.assertTrue(checked["unchanged"])
+        self.assertTrue(all(ok for _, _, ok in appwalk.verify_export(out)))
+
     def test_a_dialer_without_the_keys_is_not_dialled(self):
         class NoKeys(FakePhone):
             taps = []

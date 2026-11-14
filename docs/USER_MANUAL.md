@@ -448,8 +448,12 @@ entries and its newest entry's id and date (nothing else of it) in the chain, an
 whether they changed. Opening the dialer shows in the phone's app usage and recents, like any app
 AppWalk opens. A tester proposed this and tried it by hand on a Samsung SM-G990E, a moto g47 and a
 TCL T613P: the dialog gave text on all three, its IMEIs matched the ones read elsewhere, and the call
-log did not change. AppWalk's own run of it is tested on the Android 15 emulator only, whose call log
-is empty. The delete key's id is known for the Google dialer only.
+log did not change. AppWalk's own run of it is tested on the Android 15 emulator, whose call log is
+empty, and on two phones on Android 16. On a moto g play (2026) the dialog's two IMEIs matched About
+phone's, and the call log did not change. On a Samsung Galaxy A16 5G (SM-A166U) the keys were found
+and the field showed `*#06#`, but no dialog opened, for taps and for key events alike; the note says
+so and the call log is still recorded after. On that phone About phone gave both IMEIs. The delete
+key's id is known for the Google dialer and the Samsung dialer.
 
 ## 12. Teach AppWalk an app
 

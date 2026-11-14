@@ -1255,8 +1255,9 @@ def imei_by_settings_search(export, dev, say=print, word="IMEI"):
 # never the call button.
 DIAL_KEYS = ("star", "pound", "zero", "six", "pound")
 # The key that deletes the 0 the dialer was opened with: deleteButton on the Google dialer (emulator,
-# Android 15). Add another id only from a dialer that showed it.
-DELETE_KEYS = ("deleteButton",)
+# Android 15; moto g play 2026, Android 16), delete_button_image on the Samsung dialer (Galaxy A16 5G,
+# SM-A166U, Android 16). Add another id only from a dialer that showed it.
+DELETE_KEYS = ("deleteButton", "delete_button_image")
 
 
 def call_log_state(dev):
@@ -1322,11 +1323,18 @@ def imei_by_dialer(export, dev, say=print):
         detail = {"dialer": pkg, "typed": "*#06#", "dialog_package": dialog.front_package if dialog else None,
                   "imeis_in_dialog": len(imeis), "call_log_before": before}
         if dialog is None or not imeis:
+            # Typed but no dialog: the Galaxy A16 5G (SM-A166U, Android 16) showed *#06# in the field and
+            # opened nothing, for taps and for key events alike.
             detail["result"] = "no dialog with an IMEI" if dialog else "the screen gave no view tree"
             log.add("system_event", "dial_imei_code", detail)
             dev.back()
+            time.sleep(1)
             dev.back()
-            return "*#06# was dialled but no dialog with an IMEI was read."
+            time.sleep(1)
+            after = call_log_state(dev)
+            same = None if before is None or after is None else before == after
+            log.add("system_event", "call_log_checked", {"before": before, "after": after, "unchanged": same})
+            return "*#06# was typed but no dialog with an IMEI was read." + call_log_note(same)
         log.add("system_event", "dial_imei_code", detail)
         png = dev.screenshot()
         png, cut = crop_png(png, dialog_box(dialog))
@@ -1361,13 +1369,16 @@ def imei_by_dialer(export, dev, say=print):
     finally:
         log.close()
         refresh_manifest(export, log.rows, dev)
+    return (f"*#06# was dialled and its dialog kept (cut to the dialog); it showed {len(imeis)} IMEI(s)."
+            + call_log_note(same))
+
+
+def call_log_note(same):
     if same is False:
-        tail = " The call log CHANGED while the dialer was open: see the call_log_checked row."
-    elif same is None:
-        tail = " The call log could not be read, so whether the dialer added an entry is not known."
-    else:
-        tail = " The call log was the same before and after."
-    return f"*#06# was dialled and its dialog kept (cut to the dialog); it showed {len(imeis)} IMEI(s).{tail}"
+        return " The call log CHANGED while the dialer was open: see the call_log_checked row."
+    if same is None:
+        return " The call log could not be read, so whether the dialer added an entry is not known."
+    return " The call log was the same before and after."
 
 
 def dialog_box(tree):
