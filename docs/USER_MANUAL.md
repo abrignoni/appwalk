@@ -374,7 +374,7 @@ a wrong hash gave a WARNING.
 
 Without a profile, the transcript gives every line of an app as plain text: no sent or received, no
 times picked out, no pictures named. AppWalk comes with profiles for Google Messages, Fossify
-Messages, WhatsApp, Signal and Discord. For any other app, or to replace one of those, teach it:
+Messages, WhatsApp, Signal, Discord and Instagram. For any other app, or to replace one of those, teach it:
 **Teach this app** on the Result step, or for an earlier export:
 
 ```bash
@@ -498,6 +498,12 @@ On 11 to 13 November 2026.
   through its window, and its export check passed both times. In the window run the walk missed once,
   went back and took that part again; with 0.1.1 its transcript is the same, line for line, as a
   walk of the same conversation four minutes later that had no miss.
+- Instagram 455.0.0.51.72, 13 November: a known-data chat of 12 numbered messages with the owner's
+  other phone (text, long text, emoji, a reply, a reel, a photo), logged with KDL and walked offline.
+  Plain text bubbles carry no view id, so the profile marks them by `unnamed_message_min_height`
+  (80 px on this phone): all 11 text messages (the 10 numbered texts and a "hi" sent before the
+  log started) came out as messages with the right direction, the photo as a picture, and names, labels and the reply's quoted text as other lines. The reel shows only as its
+  account name. A second, longer conversation was checked page by page against its screenshots.
 - Teaching Signal through the 0.1.0 dialog saved a photo's placeholder as the time and a picture as
   the author. The dialog of 0.1.1 takes only text for those and shows the words of each click.
 
@@ -626,6 +632,7 @@ own. Teaching writes the same format. What a profile can say:
 | `bubble_ids` | the view that is a message's bubble; a line's side is then its bubble's side |
 | `direction_rules` | how a sent message is told from a received one, by the app's description or the side of the screen |
 | `single_column` | the app shows every message in one column, so lines are placed on the left |
+| `unnamed_message_min_height` | text with no view id at all, on the left or right, counts as a message when its box is at least this many pixels tall; for apps that give message text no id (Instagram). It is a shape, not something the app names: pixels depend on the phone's screen, so check it on the phone you use |
 
 An app can change its view ids or its layout with any update, so check a profile's output against the
 screenshots, and say in `checked_with` what it was checked with.

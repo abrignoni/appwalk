@@ -794,6 +794,56 @@ class ReportTextTests(unittest.TestCase):
 
 
 @unittest.skipUnless(appwalk.pixels_available(), "needs Pillow")
+class UnnamedMessageTests(unittest.TestCase):
+    """Text with no view id, as Instagram 455 draws plain text bubbles. The shapes are those of a
+    known-data chat on a Pixel 7a (13 November 2026): message boxes at least 94 px tall on the left or
+    right; names, labels, a reel's account line and the time 52 to 94 px, or centred."""
+
+    LINES = [  # (id, text, left, top, right, bottom, is it a message?)
+        ("", "Name", 380, 300, 700, 368, False),                       # centred, 68 px
+        ("ig_text", "View profile", 400, 380, 680, 439, False),        # centred, has an id
+        ("", "8:31 PM", 470, 460, 610, 554, False),                    # centred, 94 px
+        ("", "one line received", 147, 600, 500, 715, True),           # left, 115 px
+        ("", "one line sent", 600, 740, 1059, 855, True),              # right, 115 px
+        ("", "long sent", 310, 880, 1059, 1247, True),                 # right, 367 px
+        ("direct_context_reply_context_info_text_view", "Replied to you", 700, 1270, 1000, 1322, False),
+        ("", "account.name", 147, 1340, 420, 1399, False),             # left, 59 px: a reel's account line
+        ("", "\U0001F44D", 147, 1420, 260, 1514, True),                # left, 94 px: a single emoji
+        ("seen_state_text", "Seen just now", 700, 1540, 1000, 1592, False),
+    ]
+
+    def lines(self):
+        import transcript
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
+        nodes = "".join(f'<node class="android.widget.TextView" package="p" resource-id="{"p:id/" + r if r else ""}" '
+                        f'text="{t}" content-desc="" bounds="[{l},{tp}][{rt},{b}]" />'
+                        for r, t, l, tp, rt, b, _ in self.LINES)
+        tree = os.path.join(d, "t.xml")
+        with open(tree, "w", encoding="utf-8") as f:
+            f.write('<?xml version="1.0"?><hierarchy><node class="androidx.recyclerview.widget.RecyclerView" package="p" '
+                    'resource-id="p:id/message_list" scrollable="true" bounds="[0,250][1080,2100]" text="" content-desc="">'
+                    + nodes + "</node></hierarchy>")
+        return transcript, transcript.frame_lines(tree, "p")
+
+    def test_height_marks_unnamed_text_bubbles_as_messages(self):
+        transcript, got = self.lines()
+        prof = {"message_ids": ["direct_text_message_text_view"], "unnamed_message_min_height": 80,
+                "direction_rules": [{"by": "side", "value": "right", "direction": "sent"},
+                                    {"by": "side", "value": "left", "direction": "received"}]}
+        want = {t: m for _, t, *_, m in self.LINES}
+        for x in got:
+            role, direction, _ = transcript.classify(x, prof)
+            self.assertEqual(role == "message", want[x["text"]], x["text"])
+            if role == "message":
+                self.assertEqual(direction, {"left": "received", "right": "sent"}[x["side"]], x["text"])
+
+    def test_without_the_option_unnamed_text_stays_other(self):
+        transcript, got = self.lines()
+        prof = {"message_ids": ["direct_text_message_text_view"]}
+        self.assertEqual({transcript.classify(x, prof)[0] for x in got}, {"other"})
+
+
 class PictureOverlapTests(unittest.TestCase):
     """Two screenshots of a list whose shared part holds no text are joined only by the pictures."""
 
