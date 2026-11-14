@@ -423,9 +423,11 @@ the text, and that AppWalk read the model, IMEI, phone number and serial from it
 
 When About phone gives no IMEI, AppWalk opens Settings' own search, types IMEI (the same word in
 every language) and opens the first result. On a moto g47 (Android 16) the IMEIs are not on About
-phone, which gives no text, but one screen in, in Device details, which does; there the result's
-screen is walked and read like About phone. On stock Android the result is About phone again, and
-the note says so. Each step is in the chain. Settings may keep IMEI among its recent searches on
+phone but one screen in, in Device details; there the result's screen is walked and read like About
+phone. On stock Android the result is About phone again, and the note says so. Settings is opened in
+a task of its own each time, so a page left open earlier is not walked in its place. On these
+screens the walk goes by the screen's text, not its pictures: the moto g47's About phone has an
+animated card that kept a walk by pictures from ever settling. Each step is in the chain. Settings may keep IMEI among its recent searches on
 the phone. A phone number that follows a status ("Solo emergencia" on the moto g47) is read without
 the status, and the screen's wording is kept beside it. The Device details reading is tested on the
 tester's trees with made-up values and on made-up screens; the search on the Android 15 emulator.

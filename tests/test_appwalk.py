@@ -940,6 +940,30 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual([v["value"] for v in found["phone_number"]], ["+1 555-123-4567"])
         self.assertEqual([v["value"] for v in found["serial_number"]], ["R5CT1234ABC"])
 
+    def test_an_animation_does_not_keep_a_tree_walk_going(self):
+        # Settings rows that fit on one screen, with a card that animates: every screenshot differs.
+        if not appwalk.pixels_available():
+            self.skipTest("needs Pillow")
+
+        class Animated(FakePhone):
+            n = 0
+
+            def screenshot(self):
+                from PIL import Image, ImageDraw
+                self.n += 1
+                im = Image.new("RGB", (1080, 1400), (250, 250, 250))
+                x = (self.n * 97) % 700
+                ImageDraw.Draw(im).rectangle([x, 300, x + 300, 600], fill=(30, 90, 200))   # the card, moving
+                buf = io.BytesIO()
+                im.save(buf, "PNG")
+                return buf.getvalue()
+        _, _, by_pixels = run(Animated(count=30, start="top"), max_screens=15, reveal="below")
+        _, _, by_tree = run(Animated(count=30, start="top"), max_screens=15, reveal="below", by_tree=True)
+        self.assertGreater(by_pixels["unsettled"], 0)          # the pictures never agree
+        self.assertEqual(by_tree["unsettled"], 0)
+        self.assertTrue(by_tree["end_confirmed"], by_tree["stop_reason"])
+        self.assertLess(by_tree["screens"], 15)
+
     def test_labels_per_sim_and_a_number_after_a_status(self):
         # As a moto g47 (Android 16, Spanish) lays out Device details, with made-up values.
         out = run(FakePhone(count=5, scrollable=False))[0]
