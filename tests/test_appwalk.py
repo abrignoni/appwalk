@@ -14,6 +14,7 @@ import zlib
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import appwalk  # noqa: E402
+import transcript  # noqa: E402
 
 PKG = "com.example.chat"
 
@@ -31,7 +32,8 @@ class FakePhone:
     `offset` is the distance from the top of the list to the top of the window."""
 
     def __init__(self, count=40, item_h=100, view_h=1000, start="bottom", take_swipes=True, swipe_gain=1.0,
-                 scrollable=True, front=PKG, password=False, colour=(255, 255, 255), text=True, photo=False, draw=False):
+                 scrollable=True, front=PKG, password=False, colour=(255, 255, 255), text=True, photo=False, draw=False,
+                 pinned=False, same_text=None):
         self.count, self.item_h, self.view_h = count, item_h, view_h
         self.max_offset = max(0, count * item_h - view_h)
         self.offset = {"bottom": self.max_offset, "top": 0, "middle": self.max_offset // 2}[start]
@@ -41,6 +43,9 @@ class FakePhone:
         # the same on every item (as picture labels and delivery ticks are in Signal). draw: screenshots
         # show each item as its own pattern, so two screenshots can be compared.
         self.text, self.photo, self.draw = text, photo, draw
+        # pinned: a title inside the list that stays where it is while the list scrolls (a Samsung Settings
+        # screen). same_text: every item shows this one short text (a voice note's length, an author's name).
+        self.pinned, self.same_text = pinned, same_text
         self.clock = 1_800_000_000_000
         self.swipes, self.typed = [], []
 
@@ -59,9 +64,17 @@ class FakePhone:
             if self.text:
                 items.append(f'<node class="android.widget.TextView" package="{self.front}" resource-id="{self.front}:id/message_text" '
                              f'text="item {i + 1:03d}" content-desc="" password="false" scrollable="false" checked="false" selected="false" {b} />')
+            if self.same_text:
+                items.append(f'<node class="android.widget.TextView" package="{self.front}" resource-id="{self.front}:id/duration" '
+                             f'text="{self.same_text}" content-desc="" password="false" scrollable="false" checked="false" selected="false" '
+                             f'bounds="[40,{max(0, top) + 200}][200,{max(0, top) + 240}]" />')
             if self.photo:
                 items.append(f'<node class="android.widget.ImageView" package="{self.front}" resource-id="{self.front}:id/image" '
                              f'text="" content-desc="Photo" password="false" scrollable="false" checked="false" selected="false" {b} />')
+        if self.pinned:
+            items.insert(0, f'<node class="android.widget.TextView" package="{self.front}" resource-id="{self.front}:id/big_title" '
+                            f'text="Fictional settings" content-desc="" password="false" scrollable="false" checked="false" '
+                            f'selected="false" bounds="[0,200][1080,260]" />')
         secret = (f'<node class="android.widget.EditText" package="{self.front}" resource-id="{self.front}:id/pin" text="90417263" '
                   f'content-desc="" password="true" scrollable="false" checked="false" selected="false" bounds="[0,0][1080,100]" />'
                   if self.password else "")
@@ -658,10 +671,73 @@ class ContinuityTests(unittest.TestCase):
         self.assertGreater(s["gaps_retried"], 0)
         self.assertEqual(s["gaps"], 0)                   # the smaller moves overlap, so nothing is left open
 
+    def test_a_line_that_does_not_scroll_does_not_join(self):
+        # A title inside the list stays put on every frame; the swipes move three times as far as asked.
+        s, joins = self.walk(text=False, photo=True, draw=True, swipe_gain=3.0, item_h=130, pinned=True)
+        self.assertGreater(s["gaps_retried"], 0)         # the one-line rule joined every frame on the title
+        self.assertFalse(any(j["by"] == "text" for j in joins))
+        self.assertTrue(all(j["fixed_lines"] == 1 for j in joins))
+
+    def test_one_repeated_short_text_does_not_join(self):
+        # Items taller than half the window, each showing the same "0:07": two frames that share nothing
+        # can each hold it once, at a place that looks like a scroll of the list.
+        s, joins = self.walk(text=False, draw=True, same_text="0:07", swipe_gain=3.0, item_h=600)
+        self.assertGreater(s["gaps_retried"], 0)
+        self.assertFalse(any(j["by"] == "text" for j in joins))
+
     def test_shared_text_still_joins_without_looking_at_pictures(self):
         s, joins = self.walk()
         self.assertEqual(s["gaps"], 0)
         self.assertTrue(joins and all(j["by"] == "text" for j in joins))
+
+
+class TextShiftTests(unittest.TestCase):
+    """transcript.text_shift on made-up frames: what two frames' text says about whether they overlap."""
+
+    def line(self, text, top, h=50):
+        return {"text": text, "rid": "p:id/t", "bounds": (0, top, 500, top + h), "described": False}
+
+    LIST = (0, 200, 1080, 1200)
+
+    def test_lines_that_moved_together_join(self):
+        prev = [self.line("a", 300), self.line("b", 400), self.line("c", 500)]
+        cur = [self.line("z", 300), self.line("a", 900), self.line("b", 1000), self.line("c", 1100)]
+        ts = transcript.text_shift(prev, cur, self.LIST, "above")
+        self.assertEqual((ts["shift"], ts["agree"], ts["disagree"]), (600, 3, 0))
+        self.assertTrue(transcript.text_joins(ts))
+
+    def test_one_line_is_not_enough(self):
+        ts = transcript.text_shift([self.line("0:07", 300)], [self.line("0:07", 900)], self.LIST, "above")
+        self.assertEqual(ts["agree"], 1)
+        self.assertFalse(transcript.text_joins(ts))
+
+    def test_a_line_that_stayed_put_is_left_out(self):
+        prev = [self.line("Title", 210), self.line("a", 300)]
+        cur = [self.line("Title", 210), self.line("q", 300)]
+        ts = transcript.text_shift(prev, cur, self.LIST, "above")
+        self.assertEqual((ts["fixed"], ts["shift"], ts["agree"]), (1, None, 0))
+
+    def test_a_line_found_twice_does_not_set_the_shift(self):
+        prev = [self.line("Ana", 300), self.line("Ana", 600)]
+        cur = [self.line("Ana", 900), self.line("Ana", 1100)]
+        self.assertIsNone(transcript.text_shift(prev, cur, self.LIST, "above")["shift"])
+
+    def test_lines_that_moved_the_wrong_way_far_do_not_join(self):
+        prev = [self.line("a", 900), self.line("b", 1000)]
+        cur = [self.line("a", 300), self.line("b", 400)]
+        self.assertFalse(transcript.text_joins(transcript.text_shift(prev, cur, self.LIST, "above")))
+
+    def test_the_same_screen_read_again_joins(self):
+        prev = [self.line("a", 300), self.line("b", 400), self.line("c", 500)]
+        ts = transcript.text_shift(prev, [dict(x) for x in prev], self.LIST, "above")
+        self.assertEqual(ts["shift"], 0)
+        self.assertTrue(transcript.text_joins(ts))
+
+    def test_a_missing_line_where_the_shift_says_it_should_be_counts_against(self):
+        prev = [self.line("a", 300), self.line("b", 400), self.line("c", 500), self.line("d", 600)]
+        cur = [self.line("a", 900), self.line("x", 1000), self.line("y", 1100)]
+        ts = transcript.text_shift(prev, cur, self.LIST, "above")
+        self.assertFalse(transcript.text_joins(ts))
 
 
 class TeachTests(unittest.TestCase):
