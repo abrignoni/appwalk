@@ -566,7 +566,7 @@ On 11 to 13 November 2026.
   is called sent or received; the bold name line above each says who wrote it. All 8 text messages
   came out as messages under the right name, the photo and GIF as "Photo attached" and "Animated
   GIF", the shared post as its text with "View image", and the reaction as two other lines.
-- WhatsApp 2.26.44.90, 13 November: a known-data chat of 13 numbered messages, recorded at the end of a long existing thread and walked offline with `--stop-at "WA-01"`
+- WhatsApp 2.26.44.90, 13 November: a known-data chat of 13 numbered messages, recorded at the end of a long existing thread and walked offline with `--stop-at` set to the text that starts the first numbered message
   (4 screenshots). It found three faults in the profile of 12 November: a short sent message read
   as received (its text sits left of its bubble; the side now comes from the bubble, `main_layout`),
   a single large emoji and a GIF left out, and a photo's caption taken as other text. With the
