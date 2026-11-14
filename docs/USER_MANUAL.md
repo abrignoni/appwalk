@@ -421,16 +421,19 @@ Android 17 and on the Android 15 emulator (13 November 2026): the screenshots we
 number are in them, and nothing was read. A tester reports that a Samsung SM-G990E (Android 16) gives
 the text, and that AppWalk read the model, IMEI, phone number and serial from it.
 
-When About phone gives no IMEI, AppWalk opens Settings' own search, types IMEI (the same word in
-every language) and opens the first result. On a moto g47 (Android 16) the IMEIs are not on About
-phone but one screen in, in Device details; there the result's screen is walked and read like About
-phone. On stock Android the result is About phone again, and the note says so. Settings is opened in
+When About phone gives no IMEI, AppWalk first looks on it for a row known to lead to the IMEI, taps
+it and walks the screen it opens. On a moto g47 (Android 16) the IMEIs are not on About phone but one
+screen in, in Device details ("Detalles del dispositivo" in Spanish, the only label known so far; a
+tester found it and wrote this step). Only when there is no such row does AppWalk open Settings' own
+search, type IMEI (the same word in every language) and open the first result, walking it when it
+gives text. On stock Android that result is About phone again, and the note says so. Settings is opened in
 a task of its own each time, so a page left open earlier is not walked in its place. On these
 screens the walk goes by the screen's text, not its pictures: the moto g47's About phone has an
 animated card that kept a walk by pictures from ever settling. Each step is in the chain. Settings may keep IMEI among its recent searches on
 the phone. A phone number that follows a status ("Solo emergencia" on the moto g47) is read without
-the status, and the screen's wording is kept beside it. The Device details reading is tested on the
-tester's trees with made-up values and on made-up screens; the search on the Android 15 emulator.
+the status, and the screen's wording is kept beside it. The tester ran the row tap on a moto g47 and
+a Samsung SM-G990E (Android 16): the moto g47's model, both IMEIs and number were read from Device
+details, and the Samsung read as before. The search is tested on the Android 15 emulator only.
 
 ## 12. Teach AppWalk an app
 

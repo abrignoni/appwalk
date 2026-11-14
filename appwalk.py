@@ -1102,18 +1102,70 @@ def identify(serial, out, device_label, case=None, say=print):
         why = None if not readable else r["summary"]["stop_reason"]
         note = screenshots_without_tree(export, dev, why=why)
     found = identity_from_trees(export)
+    # With no IMEI on About phone: first a row known to lead to it, tapped by its text, which changes nothing
+    # on the phone; only when there is none, Settings' own search, which works in any language but may keep
+    # IMEI among its recent searches.
+    if readable and not found["imei"]:
+        opened = walk_details_row(dev, export, say)
+        if opened:
+            found = identity_from_trees(export)
+            note = " ".join(x for x in (note, f'About phone named no IMEI; the row "{opened}" was opened and walked too.') if x)
     if not found["imei"]:
         searched = imei_by_settings_search(export, dev, say)
         note = " ".join(x for x in (note, searched) if x)
         found = identity_from_trees(export)
     log = AppendLog(export, dev)
     log.add("system_event", "identity_read", {"found": found, "note": note,
-                                               "how": "From the view trees of Settings > About phone, and of the screen Settings' own "
-                                                      "search opens for IMEI when About phone gave none; an IMEI only when its check "
-                                                      "digit is right."})
+                                               "how": "From the view trees of Settings > About phone; when it gave no IMEI, of a "
+                                                      "row known to lead to it, or else of the screen Settings' own search opens for "
+                                                      "IMEI; an IMEI only when its check digit is right."})
     log.close()
     refresh_manifest(export, log.rows, dev)
     return export, found, note
+
+
+# Rows of About phone that lead to the IMEI, lower case. Add a label only from a screen that showed it.
+DETAILS_ROW_LABELS = ("detalles del dispositivo",)   # moto g47, Android 16, es-US, 14 November 2026
+
+
+def walk_details_row(dev, export, say=print, tries=8):
+    """When About phone names no IMEI, finds a row that leads to it by its text, taps it and walks the
+    screen it opens, into the same export. On a moto g47 the IMEIs are in Device details, one screen in,
+    and About phone is laid out as cards, which the list reader does not take as rows. Returns the row's
+    text, or None when no such row was found or it did not open. By Maxitelmo (abrignoni/appwalk#21),
+    tested on a moto g47 and a Samsung SM-G990E, both Android 16, 14 November 2026."""
+    dev.shell("am start -a android.settings.DEVICE_INFO_SETTINGS -f 0x10008000")
+    time.sleep(2)
+    hit = tree = None
+    for _ in range(tries):
+        raw = tree_now(dev)
+        if raw is None:
+            return None
+        tree = Tree(raw)
+        hit = next((n for n in tree.nodes("com.android.settings")
+                    if (n.get("text") or "").strip().lower() in DETAILS_ROW_LABELS and box_of(n)), None)
+        if hit is not None:
+            break
+        dev.swipe(540, 1600, 540, 900, 600)
+        time.sleep(1.5)
+    if hit is None:
+        return None
+    (x, y), title, bounds = center(hit), hit.get("text").strip(), list(box_of(hit))
+    before = tree.fingerprint("com.android.settings")
+    dev.tap(x, y)
+    time.sleep(2)
+    raw = tree_now(dev)
+    after = Tree(raw) if raw else None
+    opened = bool(after and after.front_package == "com.android.settings" and after.fingerprint("com.android.settings") != before)
+    log = AppendLog(export, dev)
+    log.add("auto_event", "open_item", {"title": title, "tap": [x, y], "row_bounds": bounds, "opened": opened,
+                                        "why": "About phone named no IMEI; this row leads to it on some phones"})
+    if opened:
+        walker = Walker(dev, log, "com.android.settings", reveal="below", max_screens=15, rewind=True, say=say, by_tree=True)
+        walker.run(item=title, reveal="below", capture=True, rewind=True)
+    log.close()
+    refresh_manifest(export, log.rows, dev)
+    return title if opened else None
 
 
 def tree_now(dev):

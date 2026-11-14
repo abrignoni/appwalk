@@ -964,6 +964,54 @@ class IdentityTests(unittest.TestCase):
         self.assertTrue(by_tree["end_confirmed"], by_tree["stop_reason"])
         self.assertLess(by_tree["screens"], 15)
 
+    def test_a_row_that_leads_to_the_imei_is_opened_and_walked(self):
+        # About phone with no IMEI and a "Detalles del dispositivo" row, as on a moto g47; the row opens a
+        # screen with the IMEI. Made-up values.
+        class Settings(FakePhone):
+            screen = "about"
+
+            def rows(self):
+                if self.screen == "about":
+                    return ["Nombre del dispositivo", "Test", "Detalles del dispositivo", "Modelo"]
+                return ["Modelo", "moto test", "IMEI1 \u00b7 Tarjeta SIM", "490154203237518"]
+
+            def tree_raw(self):
+                nodes = "".join(f'<node class="android.widget.TextView" package="com.android.settings" text="{t}" '
+                                f'resource-id="android:id/title" bounds="[40,{300 + i * 120}][1040,{400 + i * 120}]" />'
+                                for i, t in enumerate(self.rows()))
+                return ('<?xml version="1.0"?><hierarchy><node class="androidx.recyclerview.widget.RecyclerView" '
+                        'package="com.android.settings" scrollable="false" bounds="[0,200][1080,1300]">'
+                        f'{nodes}</node></hierarchy>').encode("utf-8")
+
+            def adb(self, *a, **k):
+                return self.tree_raw()
+
+            def shell(self, cmd):
+                if "DEVICE_INFO_SETTINGS" in cmd:
+                    self.screen = "about"
+
+            def tap(self, x, y):
+                if self.screen == "about" and 540 <= y <= 640:
+                    self.screen = "details"
+        phone = Settings(count=3)
+        out = run(phone)[0]
+        orig_sleep = appwalk.time.sleep
+        appwalk.time.sleep = lambda s: None
+        try:
+            opened = appwalk.walk_details_row(phone, out, say=lambda *a: None)
+        finally:
+            appwalk.time.sleep = orig_sleep
+        self.assertEqual(opened, "Detalles del dispositivo")
+        self.assertEqual([v["value"] for v in appwalk.identity_from_trees(out)["imei"]], ["490154203237518"])
+        self.assertTrue(all(ok for _, _, ok in appwalk.verify_export(out)))
+        phone.screen = "details"   # no such row on the screen: nothing is tapped
+        phone.shell = lambda cmd: None
+        appwalk.time.sleep = lambda s: None
+        try:
+            self.assertIsNone(appwalk.walk_details_row(phone, out, say=lambda *a: None, tries=2))
+        finally:
+            appwalk.time.sleep = orig_sleep
+
     def test_labels_per_sim_and_a_number_after_a_status(self):
         # As a moto g47 (Android 16, Spanish) lays out Device details, with made-up values.
         out = run(FakePhone(count=5, scrollable=False))[0]
