@@ -128,9 +128,9 @@ def finished():
 
 def to_conversation_list():
     adb("shell", "input", "keyevent", "3")
-    time.sleep(1)
+    run_loop(1)
     adb("shell", "am", "start", "-n", "com.google.android.apps.messaging/.ui.ConversationListActivity")
-    time.sleep(5)
+    run_loop(5)
 
 
 OTHER_APP = "com.android.settings"
@@ -143,7 +143,7 @@ def scenario_g():
     app.mode.set("screen")
     app.next_btn.invoke()
     adb("shell", "am", "start", "-a", "android.settings.SETTINGS")
-    time.sleep(6)
+    run_loop(6)
     app.result = None
     app.start_btn.invoke()
     up = getattr(app, "front_win", None) is not None and app.front_win.winfo_exists()
@@ -464,11 +464,11 @@ def script():
     to_conversation_list()
     adb("shell", "locksettings", "set-pin", PIN)
     adb("shell", "input", "keyevent", "26")
-    time.sleep(2)
+    run_loop(2)
     adb("shell", "input", "keyevent", "26")
-    time.sleep(2)
+    run_loop(2)
     adb("shell", "input", "keyevent", "82")
-    time.sleep(2)
+    run_loop(2)
     app.show(1)
     app.mode.set("screen")
     app.next_btn.invoke()
