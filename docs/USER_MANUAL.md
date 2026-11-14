@@ -2,7 +2,7 @@
 
 # AppWalk user manual
 
-For AppWalk 0.1.1, 13 November 2026. What it was tested on is in section 14; anything not listed there
+For AppWalk 0.1.2, 13 November 2026. What it was tested on is in section 14; anything not listed there
 has not been tried.
 
 Every picture in this manual comes from AppWalk driven against an Android 15 emulator with made-up
