@@ -33,7 +33,7 @@ import uuid
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
-VERSION = "0.1.1"
+VERSION = "0.1.2"
 # transcript.py sits beside this file. Python started with -I does not look there by itself.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 SCHEMA_VERSION = 3  # the KDL export schema this writes
