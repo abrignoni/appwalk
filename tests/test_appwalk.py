@@ -740,6 +740,42 @@ class TextShiftTests(unittest.TestCase):
         self.assertFalse(transcript.text_joins(ts))
 
 
+class EdgeSideTests(unittest.TestCase):
+    """transcript.sides_from_edges: a bubble near the middle takes the side of the edge it lines up with."""
+
+    def bubble(self, l, r, side, top):
+        return {"text": f"t{top}", "rid": "p:id/message_text", "bounds": (l + 20, top, r - 20, top + 40),
+                "side": side, "described": False, "bubble": (l, top - 10, r, top + 50)}
+
+    def walk(self):
+        # Received bubbles start at 110 (after a sender's picture), sent ones end at 1051, in a list 1080 wide.
+        return [self.bubble(110, 400, "left", 100), self.bubble(110, 700, "left", 200),
+                self.bubble(500, 1051, "right", 300), self.bubble(300, 1051, "right", 400)]
+
+    def test_a_long_received_bubble_goes_left(self):
+        lines = self.walk() + [self.bubble(110, 953, "across", 500)]   # 10.2% and 11.8%: side_of says across
+        self.assertEqual(transcript.sides_from_edges(lines), 1)
+        self.assertEqual(lines[-1]["side"], "left")
+
+    def test_a_long_sent_bubble_goes_right(self):
+        lines = self.walk() + [self.bubble(130, 1051, "across", 500)]
+        transcript.sides_from_edges(lines)
+        self.assertEqual(lines[-1]["side"], "right")
+
+    def test_a_bubble_on_both_edges_or_neither_stays_across(self):
+        lines = self.walk() + [self.bubble(110, 1051, "across", 500), self.bubble(200, 880, "across", 600)]
+        self.assertEqual(transcript.sides_from_edges(lines), 0)
+        self.assertEqual([x["side"] for x in lines[-2:]], ["across", "across"])
+
+    def test_one_bubble_is_not_an_edge(self):
+        lines = [self.bubble(110, 400, "left", 100), self.bubble(500, 1051, "right", 300), self.bubble(110, 953, "across", 500)]
+        self.assertEqual(transcript.sides_from_edges(lines), 0)
+
+    def test_lines_without_a_bubble_are_left_alone(self):
+        date = {"text": "Today", "rid": "p:id/date", "bounds": (400, 50, 680, 90), "side": "across", "described": False, "bubble": None}
+        self.assertEqual(transcript.sides_from_edges(self.walk() + [date]), 0)
+
+
 class TeachTests(unittest.TestCase):
     """A profile from clicks on a made-up view tree, as the Teach dialog makes it."""
 
