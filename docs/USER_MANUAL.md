@@ -546,13 +546,13 @@ On 11 to 13 November 2026.
   through its window, and its export check passed both times. In the window run the walk missed once,
   went back and took that part again; with 0.1.1 its transcript is the same, line for line, as a
   walk of the same conversation four minutes later that had no miss.
-- Instagram 455.0.0.51.72, 13 November: a known-data chat of 12 numbered messages with the owner's
-  other phone (text, long text, emoji, a reply, a reel, a photo), logged with KDL and walked offline.
+- Instagram 455.0.0.51.72, 13 November: a known-data chat of 12 numbered messages (text, long text,
+  emoji, a reply, a reel, a photo), logged with KDL and walked offline.
   Plain text bubbles carry no view id, so the profile marks them by `unnamed_message_min_height`
-  (80 px on this phone): all 11 text messages (the 10 numbered texts and a "hi" sent before the
+  (80 px on this phone): all 11 text messages (the 10 numbered texts and one sent before the
   log started) came out as messages with the right direction, the photo as a picture, and names, labels and the reply's quoted text as other lines. The reel shows only as its
   account name. A second, longer conversation was checked page by page against its screenshots.
-- Threads, 13 November: a known-data chat of 11 numbered messages with the owner's other phone
+- Threads, 13 November: a known-data chat of 11 numbered messages
   (text, long text, emoji, a single emoji, a reply, a shared post, a photo, a GIF), walked offline.
   Threads' views carry no ids, but it describes each bubble ("Chat text message"), so the profile
   uses those descriptions: all 8 text messages came out as messages with the right direction, the
@@ -560,14 +560,13 @@ On 11 to 13 November 2026.
   quoted message above the reply was first taken as a message; its box runs under the reply's, which
   no other bubble's does, and that now leaves it out. An earlier conversation in the same chat was
   checked against its screenshots.
-- LinkedIn, 13 November: a known-data chat of 12 numbered messages with the owner's other phone
+- LinkedIn, 13 November: a known-data chat of 12 numbered messages
   (text, long text, emoji, a single emoji, a reaction, a shared post, a photo, a GIF), walked offline.
   LinkedIn shows every message in one column under the sender's name, so, as for Discord, no message
   is called sent or received; the bold name line above each says who wrote it. All 8 text messages
   came out as messages under the right name, the photo and GIF as "Photo attached" and "Animated
   GIF", the shared post as its text with "View image", and the reaction as two other lines.
-- WhatsApp 2.26.44.90, 13 November: a known-data chat of 13 numbered messages with the owner's other
-  phone, recorded at the end of a long existing thread and walked offline with `--stop-at "WA-01"`
+- WhatsApp 2.26.44.90, 13 November: a known-data chat of 13 numbered messages, recorded at the end of a long existing thread and walked offline with `--stop-at "WA-01"`
   (4 screenshots). It found three faults in the profile of 12 November: a short sent message read
   as received (its text sits left of its bubble; the side now comes from the bubble, `main_layout`),
   a single large emoji and a GIF left out, and a photo's caption taken as other text. With the
