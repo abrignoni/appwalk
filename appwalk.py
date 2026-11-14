@@ -362,8 +362,11 @@ class Log:
 class Walker:
     def __init__(self, device, log, package, *, reveal="above", fraction=0.70, swipe_ms=1200, max_screens=200,
                  stable_stops=2, settle_s=0.6, on_blocked="stop", ask=None, sleep=time.sleep, say=print,
-                 rewind=True, max_rewind_scrolls=400):
+                 rewind=True, max_rewind_scrolls=400, stop_at=None):
         self.d, self.log, self.package = device, log, package
+        # Text that ends the walk once a screenshot shows it, for a long conversation of which only the newest
+        # part is wanted (a known-data chat started inside an old thread, for example).
+        self.stop_at = stop_at
         self.reveal, self.fraction, self.swipe_ms = reveal, fraction, swipe_ms
         self.max_screens, self.stable_stops, self.settle_s = max_screens, stable_stops, settle_s
         self.on_blocked, self.ask, self.sleep, self.say = on_blocked, ask, sleep, say
@@ -489,6 +492,7 @@ class Walker:
             "tool": f"AppWalk {VERSION}", "package": self.package, "app_version": self.app_version, "item": item,
             "capture": capture, "reveal": self.reveal, "scroll_fraction": self.fraction, "swipe_ms": self.swipe_ms,
             "max_screens": self.max_screens, "stable_stops": self.stable_stops, "on_blocked": self.on_blocked,
+            "stop_at": self.stop_at,
             "rewind": do_rewind})
         if do_rewind and not self.go_to_far_end():
             return self.finish()
@@ -541,6 +545,11 @@ class Walker:
             if capture:
                 self.save(tree, png, stamp, attempt, fp, same, overlap, len(labels), joined)
             prev_tree = tree
+            if self.stop_at and any(self.stop_at in (n.get("text") or "") for n in tree.nodes(self.package)):
+                s["end_confirmed"] = False
+                s["stop_reason"] = (f'stopped where the examiner asked: a screenshot shows "{self.stop_at}"; the list '
+                                    "goes on past it and was not documented further")
+                break
             if busy_end:
                 s["end_confirmed"] = False
                 s["stop_reason"] = ("the app kept showing a loading indicator at this end of the list, so its view tree "
@@ -1083,7 +1092,7 @@ def app_in_front(serial, adb=None):
 
 def run_job(serial, package, out, scenario, device_label, mode="screen", reveal="above", rewind=True, fraction=0.70,
             swipe_ms=1200, max_screens=200, item_reveal="above", capture_list=True, choose=None, ask=None, say=print,
-            on_screenshot=None, should_stop=None, pause_gate=None, case=None):
+            on_screenshot=None, should_stop=None, pause_gate=None, case=None, stop_at=None):
     """One whole run, for the command line and the window alike. mode is "screen" (walk what is open) or
     "list" (choose rows, open and walk each). Returns a dict: export, ok, lines (the summary a person
     reads), summary, manifest."""
@@ -1095,7 +1104,7 @@ def run_job(serial, package, out, scenario, device_label, mode="screen", reveal=
     os.makedirs(export)
     log = Log(export, scenario, device_label, dev)
     walker = Walker(dev, log, package, reveal=reveal, fraction=fraction, swipe_ms=swipe_ms, max_screens=max_screens,
-                    on_blocked="ask" if ask else "stop", rewind=rewind, ask=ask, say=say)
+                    on_blocked="ask" if ask else "stop", rewind=rewind, ask=ask, say=say, stop_at=stop_at)
     if should_stop:
         walker.should_stop = should_stop
     if pause_gate:
@@ -1114,7 +1123,8 @@ def run_job(serial, package, out, scenario, device_label, mode="screen", reveal=
             on_screenshot(os.path.join(export, "screens", log.shots[-1]["file"]), walker.step, walker.item)
         walker.save = save_and_tell
     params = dict(serial=serial, package=package, mode=mode, reveal=reveal, rewind=rewind, fraction=fraction, swipe_ms=swipe_ms,
-                  max_screens=max_screens, item_reveal=item_reveal, capture_list=capture_list, on_blocked="ask" if ask else "stop")
+                  max_screens=max_screens, item_reveal=item_reveal, capture_list=capture_list, on_blocked="ask" if ask else "stop",
+                  stop_at=stop_at)
 
     def clean(s, need_rewind=True):
         return bool(s["gaps"] == 0 and s["unsettled"] == 0 and s["end_confirmed"] and (not need_rewind or s["rewind_end_confirmed"]))
@@ -1170,6 +1180,8 @@ def main(argv=None):
     common.add_argument("--fraction", type=float, default=0.70, help="scroll distance as a part of the list height (default 0.70; 0.30 is the cautious setting)")
     common.add_argument("--swipe-ms", type=int, default=1200)
     common.add_argument("--max-screens", type=int, default=200, help="cap on screenshots per walk")
+    common.add_argument("--stop-at", metavar="TEXT", help="end the walk at the first screenshot that shows this text "
+                        "(for the newest part of a long conversation); the end is then not confirmed")
     common.add_argument("--on-blocked", choices=["stop", "ask"], default="stop", help="what to do when a lock, a password prompt or another app is in front")
     common.add_argument("--allow-secret-entry", action="store_true", help="with --on-blocked ask: let the examiner type a code at the workstation for the tool to enter")
     w = sub.add_parser("walk", parents=[common], help="document the one screen that is open on the phone")
@@ -1227,7 +1239,7 @@ def main(argv=None):
                mode="list" if a.cmd == "walk-list" else "screen", reveal=getattr(a, "reveal", "above"),
                rewind=not getattr(a, "no_rewind", False), fraction=a.fraction, swipe_ms=a.swipe_ms, max_screens=a.max_screens,
                item_reveal=getattr(a, "item_reveal", "above"), capture_list=not getattr(a, "skip_list_capture", False),
-               choose=chooser(a.select, a.match) if a.cmd == "walk-list" else None,
+               choose=chooser(a.select, a.match) if a.cmd == "walk-list" else None, stop_at=a.stop_at,
                ask=ask_examiner(a.allow_secret_entry) if a.on_blocked == "ask" else None)
     r = run_job(**job)
     print(f"\nExport: {r['export']}")

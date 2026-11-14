@@ -518,6 +518,15 @@ On 11 to 13 November 2026.
   is called sent or received; the bold name line above each says who wrote it. All 8 text messages
   came out as messages under the right name, the photo and GIF as "Photo attached" and "Animated
   GIF", the shared post as its text with "View image", and the reaction as two other lines.
+- WhatsApp 2.26.44.90, 13 November: a known-data chat of 13 numbered messages with the owner's other
+  phone, recorded at the end of a long existing thread and walked offline with `--stop-at "WA-01"`
+  (4 screenshots). It found three faults in the profile of 12 November: a short sent message read
+  as received (its text sits left of its bubble; the side now comes from the bubble, `main_layout`),
+  a single large emoji and a GIF left out, and a photo's caption taken as other text. With the
+  profile fixed, all 13 came out right, except the link sent on its own: WhatsApp shows only its
+  preview card (title, snippet, address), so the transcript has the card, not the typed link. The
+  fix also turned one short message in the owner's earlier WhatsApp report from received to sent,
+  which its screenshot confirms.
 - Teaching Signal through the 0.1.0 dialog saved a photo's placeholder as the time and a picture as
   the author. The dialog of 0.1.1 takes only text for those and shows the words of each click.
 
@@ -595,6 +604,7 @@ Options for both:
 | `--fraction` | 0.70 | scroll distance as a part of the list height; 0.30 is the cautious setting |
 | `--swipe-ms` | 1200 | how long each swipe takes, in milliseconds |
 | `--max-screens` | 200 | cap on screenshots per walk |
+| `--stop-at TEXT` | none | end the walk at the first screenshot that shows this text, for the newest part of a long conversation (a chat recorded for a test inside an old thread, for example); the end is then not confirmed, and the run says where it stopped |
 | `--on-blocked` | stop | `stop`, or `ask` to wait for the examiner when a lock, a password prompt or another app is in front |
 | `--allow-secret-entry` | off | with `--on-blocked ask`: let the examiner type a code at the computer for AppWalk to enter |
 

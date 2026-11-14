@@ -165,6 +165,16 @@ class WalkTests(unittest.TestCase):
         self.assertFalse(s["end_confirmed"])
         self.assertIn("NOT CONFIRMED", s["stop_reason"])
 
+    def test_stop_at_ends_the_walk_at_the_screen_that_shows_the_text(self):
+        # A long thread of which only the newest part is wanted: the walk starts at the newest item and stops at
+        # the first screenshot that shows the marker, without walking the older items.
+        out, log, s = run(FakePhone(count=80), stop_at="item 070")
+        self.assertIn("item 070", texts_seen(out))
+        self.assertNotIn("item 001", texts_seen(out))
+        self.assertIn("stopped where the examiner asked", s["stop_reason"])
+        self.assertFalse(s["end_confirmed"])
+        self.assertTrue(all(ok for _, _, ok in appwalk.verify_export(out)))
+
     def test_one_screen_of_content_is_reported_as_such(self):
         s = run(FakePhone(count=5, scrollable=False))[2]
         self.assertTrue(s["end_confirmed"])
