@@ -1,11 +1,31 @@
 {
   "package": "com.whatsapp",
-  "checked_with": "2.26.44.90 on a Pixel 7a, Android 17, 12 November 2026, one conversation",
-  "message_ids": ["message_text"],
-  "time_ids": ["date"],
-  "described_ids": ["image"],
+  "checked_with": "2.26.44.90 on a Pixel 7a, Android 17, 12 November 2026, one conversation; 13 November 2026, a known-data chat of 13 numbered messages between two phones",
+  "message_ids": [
+    "message_text",
+    "caption"
+  ],
+  "time_ids": [
+    "date"
+  ],
+  "described_ids": [
+    "image",
+    "media_container",
+    "video_container"
+  ],
   "direction_rules": [
-    {"by": "side", "value": "right", "direction": "sent"},
-    {"by": "side", "value": "left", "direction": "received"}
+    {
+      "by": "side",
+      "value": "right",
+      "direction": "sent"
+    },
+    {
+      "by": "side",
+      "value": "left",
+      "direction": "received"
+    }
+  ],
+  "bubble_ids": [
+    "main_layout"
   ]
 }
