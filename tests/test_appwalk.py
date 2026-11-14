@@ -804,6 +804,46 @@ class ReportTextTests(unittest.TestCase):
 
 
 @unittest.skipUnless(appwalk.pixels_available(), "needs Pillow")
+class AttachTests(unittest.TestCase):
+    """A file added after the walk (an app's own chat export) goes into the hash chain."""
+
+    def export_with_zip(self):
+        import zipfile
+        out = run(FakePhone(count=12))[0]
+        z = os.path.join(tempfile.mkdtemp(), "chat export.zip")
+        self.addCleanup(shutil.rmtree, os.path.dirname(z))
+        with zipfile.ZipFile(z, "w") as f:
+            f.writestr("_chat.txt", "11/13/26, 21:48 - A: hello\n")
+            f.writestr("PTT-20261113-WA0001.opus", b"\x00" * 300)
+        return out, z
+
+    def test_an_attached_zip_is_chained_listed_and_checked(self):
+        out, z = self.export_with_zip()
+        before = json.load(open(os.path.join(out, "manifest.json"), encoding="utf-8"))["hash_chain"]["last_row_hash"]
+        d = appwalk.attach_file(out, local_path=z, note="WhatsApp, Export chat, Include media")
+        self.assertEqual(d["sha256"], appwalk.sha256(read(z)))
+        self.assertEqual(sorted(m["name"] for m in d["zip_members"]), ["PTT-20261113-WA0001.opus", "_chat.txt"])
+        m = json.load(open(os.path.join(out, "manifest.json"), encoding="utf-8"))
+        self.assertNotEqual(m["hash_chain"]["last_row_hash"], before)           # the chain grew
+        self.assertEqual(m["attachments"][0]["file"], "chat export.zip")
+        checks = appwalk.verify_export(out)
+        self.assertTrue(all(ok for _, _, ok in checks), checks)
+        self.assertIn("attached files against chained rows", [c[0] for c in checks])
+        # A changed attachment, and a file nobody chained, are both caught.
+        with open(os.path.join(out, "attachments", "chat export.zip"), "ab") as f:
+            f.write(b"x")
+        write(os.path.join(out, "attachments", "stray.txt"), b"not chained")
+        bad = {c[0]: c[2] for c in appwalk.verify_export(out)}
+        self.assertFalse(bad["attached files against chained rows"])
+        self.assertFalse(bad["files with no chained row"])
+
+    def test_the_same_name_is_not_added_twice(self):
+        out, z = self.export_with_zip()
+        appwalk.attach_file(out, local_path=z)
+        with self.assertRaises(FileExistsError):
+            appwalk.attach_file(out, local_path=z)
+
+
 class UnnamedMessageTests(unittest.TestCase):
     """Text with no view id, as Instagram 455 draws plain text bubbles. The shapes are those of a
     known-data chat on a Pixel 7a (13 November 2026): message boxes at least 94 px tall on the left or

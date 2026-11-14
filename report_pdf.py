@@ -155,7 +155,11 @@ def summary_lines(manifest, rows=None):
     else:
         out.append(f"{s['screens']} screenshots of the open screen.")
         if not s.get("end_confirmed") or (s.get("rewind_end_confirmed") is False):
-            out.append(f"Look at this: the end was not confirmed ({s.get('stop_reason')}).")
+            why = s.get("stop_reason") or ""
+            if why.startswith("stopped where the examiner asked"):
+                out.append(why[0].upper() + why[1:] + ".")
+            else:
+                out.append(f"Look at this: the end was not confirmed ({why}).")
         else:
             out.append("Both ends of the list were reached.")
         if s.get("unsettled"):
@@ -235,7 +239,8 @@ def build(export, out_name="report.pdf"):
         facts.append(("Phone", f"{s0.get('manufacturer') or ''} {s0.get('model') or ''}, Android {s0.get('android') or '?'}".strip()))
         on = lambda v: "not reported" if v is None else ("on" if v else "off")
         facts.append(("Airplane mode", " · ".join(f"{s.get('when', '')}: {on(s.get('airplane_mode_on'))}" for s in states)))
-    facts += [("Started", when(rows[0])), ("Ended", when(rows[-1])), ("Export folder", folder),
+    walk_rows = [r for r in rows if r["action"] != "file_attached"]   # a file added later is not the walk
+    facts += [("Started", when(walk_rows[0])), ("Ended", when(walk_rows[-1])), ("Export folder", folder),
               ("Latest row hash", last_hash), ("Made by", f"AppWalk {appwalk.VERSION}")]
     t = Table([[Paragraph(esc(k), st["small"]), Paragraph(esc(str(v)), st["p"])] for k, v in facts if v],
               colWidths=[1.6 * inch, 5.2 * inch])
@@ -245,6 +250,29 @@ def build(export, out_name="report.pdf"):
     for n in notes:   # the same notes the transcript page shows in yellow at its top, given the same weight here
         story.append(Spacer(1, 4))
         story.append(Paragraph(esc(n), st["note"]))
+    atts = manifest.get("attachments") or []
+    if atts:
+        # Files the examiner added after the walk, such as an app's own chat export: their hashes are in the
+        # chain, and for a zip each member is listed in the row (name, size, CRC-32).
+        story.append(Paragraph("Files added after the walk", st["h"]))
+        for d in atts:
+            src = ("pulled from the phone, " + d.get("phone_path", "") + ", and hashed there too" if d.get("source") == "phone"
+                   else "copied from this computer")
+            story.append(Paragraph(esc(f"attachments/{d['file']}: {d['bytes']:,} bytes, {src}. SHA-256 {d['sha256']}"), st["p"]))
+            if d.get("note"):
+                story.append(Paragraph(esc("Note: " + d["note"]), st["small"]))
+            members = d.get("zip_members")
+            if members:
+                kinds = {}
+                for m in members:
+                    ext = os.path.splitext(m["name"])[1].lower() or "(no extension)"
+                    kinds[ext] = kinds.get(ext, 0) + 1
+                story.append(Paragraph(esc(f"A zip of {len(members)} files: " + ", ".join(f"{n} {k}" for k, n in sorted(kinds.items()))), st["small"]))
+                for m in members[:60]:
+                    story.append(Paragraph(esc(f"{m['name']} · {m['bytes']:,} bytes · CRC-32 {m['crc32']}"), st["small"]))
+                if len(members) > 60:
+                    story.append(Paragraph(esc(f"and {len(members) - 60} more, listed in the file's row in actions.jsonl"), st["small"]))
+            story.append(Spacer(1, 4))
     story.append(Paragraph("How to read this report", st["h"]))
     for x in ("The screenshots are the record of what was on the screen. The text beside each is what the app "
               "reported for those screens, in reading order, each line once. That is usually the same text and is not "

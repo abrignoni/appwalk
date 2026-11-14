@@ -31,7 +31,7 @@ import sys
 import time
 import uuid
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 VERSION = "0.1.2"
 # transcript.py sits beside this file. Python started with -I does not look there by itself.
@@ -336,8 +336,9 @@ class Log:
             "schema": SCHEMA_VERSION, "seq": len(self.rows) + 1, "entry_id": f.get("entry_id") or uuid.uuid4().hex, "revision_n": 0,
             "kind": kind, "scenario_id": self.scenario_id, "device_label": self.device_label, "profile_id": "p1",
             "utc_ms": s["utc_ms"], "tz_id": s["tz_id"], "tz_offset_min": s["tz_offset_min"],
-            "elapsed_ms": s["elapsed_ms"], "boot_count": s["boot_count"], "boot_wall_ms": s["utc_ms"] - s["elapsed_ms"],
-            "network_time_ms": None, "gnss_time_ms": None, "time_quality": "exact", "window_s": None,
+            "elapsed_ms": s["elapsed_ms"], "boot_count": s["boot_count"],
+            "boot_wall_ms": None if s["elapsed_ms"] is None else s["utc_ms"] - s["elapsed_ms"],
+            "network_time_ms": None, "gnss_time_ms": None, "time_quality": s.get("time_quality", "exact"), "window_s": None,
             "edited_utc_ms": s["utc_ms"], "app_package": f.get("app_package"), "app_version": f.get("app_version"),
             "account": None, "action": action, "content": clean(f.get("content")), "counterpart": None,
             "direction": None, "conversation_id": f.get("conversation_id"), "refers_to": f.get("refers_to"),
@@ -996,6 +997,118 @@ def write_export(log, device, package, app_version, summary, args_used):
     return manifest
 
 
+# ---- Files added to an export after the walk ----
+
+class AppendLog(Log):
+    """The log of an export already written, opened to add rows to the end of its chain."""
+    def __init__(self, out_dir, device):
+        self.out, self.device, self.host_clock = out_dir, device, time.time
+        with open(os.path.join(out_dir, "actions.jsonl"), encoding="utf-8") as f:
+            self.rows = [json.loads(x) for x in f if x.strip()]
+        self.scenario_id, self.device_label = self.rows[0]["scenario_id"], self.rows[0]["device_label"]
+        self.shots, self.trees = [], []
+        self.fh = open(os.path.join(out_dir, "actions.jsonl"), "ab")
+
+
+class HostClock:
+    """For a file added with no phone connected: the workstation's clock, and no phone uptime or boot count."""
+    def stamp(self):
+        now = time.time()
+        off = int((datetime.fromtimestamp(now).astimezone().utcoffset() or timedelta(0)).total_seconds() // 60)
+        return {"utc_ms": int(now * 1000), "elapsed_ms": None, "tz_id": "workstation", "tz_offset_min": off, "boot_count": -1,
+                "time_quality": "workstation clock"}
+
+
+def zip_members(path):
+    """(name, bytes, crc32 as hex, date in the zip) of each member, or None when the file is not a zip."""
+    import zipfile
+    if not zipfile.is_zipfile(path):
+        return None
+    with zipfile.ZipFile(path) as z:
+        return [{"name": i.filename, "bytes": i.file_size, "crc32": f"{i.CRC:08x}",
+                 "date_in_zip": "%04d-%02d-%02d %02d:%02d:%02d" % i.date_time} for i in z.infolist()]
+
+
+def attach_file(export, phone_path=None, serial=None, local_path=None, note=None):
+    """Adds a file to an export: one the examiner made on the phone (an app's own chat export, for example),
+    pulled with adb, or one already on the workstation. The file is kept in attachments/, and a row added to
+    the end of the hash chain holds its SHA-256 and size (and, for a zip, each member's name, size and
+    CRC-32), so the latest row hash covers it as it covers the screenshots. A file pulled from the phone is
+    also hashed on the phone, so the copy can be shown to match it. The manifest, actions.csv, transcript
+    and report are written again. Returns the row's detail."""
+    import shutil
+    folder = os.path.join(export, "attachments")
+    os.makedirs(folder, exist_ok=True)
+    if phone_path:
+        dev = AdbDevice(serial)
+        name = os.path.basename(phone_path.rstrip("/"))
+    else:
+        dev = None
+        name = os.path.basename(local_path)
+    dest = os.path.join(folder, name)
+    if os.path.exists(dest):
+        raise FileExistsError(f"attachments/{name} is already in this export")
+    detail = {"file": name, "note": note or ""}
+    if phone_path:
+        quoted = "'" + phone_path.replace("'", "'\\''") + "'"
+        phone_sum = dev.shell(f"sha256sum {quoted}").split()[0] if phone_path else None
+        dev.adb("pull", phone_path, dest, timeout=3600)
+        detail.update(source="phone", phone_path=phone_path, sha256_on_phone=phone_sum)
+    else:
+        shutil.copy2(local_path, dest)
+        detail.update(source="workstation", workstation_path=os.path.abspath(local_path))
+    data = read_bytes(dest)
+    detail.update(sha256=sha256(data), bytes=len(data))
+    if phone_path and detail["sha256_on_phone"] != detail["sha256"]:
+        os.remove(dest)
+        raise RuntimeError(f"the copy of {name} does not match the file on the phone (SHA-256 differs); nothing was added")
+    members = zip_members(dest)
+    if members is not None:
+        detail["zip_members"] = members
+    log = AppendLog(export, dev or HostClock())
+    log.add("system_event", "file_attached", detail)
+    log.close()
+    refresh_manifest(export, log.rows, dev)
+    return detail
+
+
+def refresh_manifest(export, rows, dev=None):
+    """After rows were added: actions.csv, the manifest's file hashes and chain end, then the transcript and
+    report, written again."""
+    with open(os.path.join(export, "manifest.json"), encoding="utf-8") as f:
+        manifest = json.load(f)
+    with open(os.path.join(export, "actions.csv"), "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(CSV_COLUMNS)
+        for r in rows:
+            utc = datetime.fromtimestamp(r["utc_ms"] / 1000, tz=timezone.utc)
+            local = datetime.fromtimestamp(r["utc_ms"] / 1000 + r["tz_offset_min"] * 60, tz=timezone.utc)
+            shot = r.get("screenshot") or {}
+            w.writerow([r["seq"], local.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3], utc.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                        r["kind"], r["action"], r["app_package"], r["app_version"], shot.get("file"), shot.get("sha256"),
+                        shot.get("status"), r["detail"], r["elapsed_ms"], r["boot_count"], r["tz_id"], r["tz_offset_min"],
+                        r["entry_id"], r["prev_hash"], r["row_hash"]])
+    ok, _, bad = verify_chain(rows)
+    manifest["files"]["actions.jsonl"] = {"sha256": sha256(read_bytes(os.path.join(export, "actions.jsonl"))), "rows": len(rows)}
+    manifest["files"]["actions.csv"] = {"sha256": sha256(read_bytes(os.path.join(export, "actions.csv")))}
+    manifest["hash_chain"] = {"rows": len(rows), "last_seq": rows[-1]["seq"], "last_row_hash": rows[-1]["row_hash"],
+                              "first_break_seq": bad}
+    manifest["attachments"] = [json.loads(r["detail"]) for r in rows if r["action"] == "file_attached"]
+    with open(os.path.join(export, "manifest.json"), "w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2, ensure_ascii=False)
+    try:
+        import transcript
+        transcript.write(export)
+    except Exception:  # a reading aid must never cost the export
+        pass
+    try:
+        import report_pdf
+        report_pdf.build(export)
+    except Exception:  # nor may the report
+        pass
+    return manifest
+
+
 def verify_export(folder):
     """Checks an export against itself: file hash, chain, and every image and tree against the hash in its
     chained row. Returns a list of (check, result, ok)."""
@@ -1026,7 +1139,15 @@ def verify_export(folder):
                 bad += 1
                 res.append((f"{sub}/{name}", "MISSING" if not os.path.exists(p) else "MISMATCH with the hash in its chained row", False))
     res.append(("images and view trees against chained rows", f"{n - bad} of {n} match", bad == 0))
-    extra = [(s, f) for s in ("screens", "trees") for f in sorted(os.listdir(os.path.join(folder, s))) if (s, f) not in listed]
+    att = [json.loads(r["detail"]) for r in rows if r["action"] == "file_attached"]
+    if att:
+        bad_att = [d["file"] for d in att if not os.path.exists(os.path.join(folder, "attachments", d["file"]))
+                   or sha256(read_bytes(os.path.join(folder, "attachments", d["file"]))) != d["sha256"]]
+        res.append(("attached files against chained rows", f"{len(att) - len(bad_att)} of {len(att)} match"
+                    + ("" if not bad_att else ": MISMATCH or MISSING " + ", ".join(bad_att)), not bad_att))
+        listed |= {("attachments", d["file"]) for d in att}
+    subs = ("screens", "trees") + (("attachments",) if os.path.isdir(os.path.join(folder, "attachments")) else ())
+    extra = [(s, f) for s in subs for f in sorted(os.listdir(os.path.join(folder, s))) if (s, f) not in listed]
     res.append(("files with no chained row", "none" if not extra else "EXTRA: " + ", ".join(f"{s}/{f}" for s, f in extra), not extra))
     return res
 
@@ -1198,6 +1319,14 @@ def main(argv=None):
     tr.add_argument("export")
     rp = sub.add_parser("report", help="write report.pdf for an export (needs ReportLab)")
     rp.add_argument("export")
+    at = sub.add_parser("attach", help="add a file to an export, such as an app's own chat export, pulled from the "
+                        "phone or copied from this computer; it goes into the hash chain")
+    at.add_argument("export")
+    src = at.add_mutually_exclusive_group(required=True)
+    src.add_argument("--from-phone", metavar="PATH", help="the file's path on the phone, for example /sdcard/Download/chat.zip")
+    src.add_argument("--file", metavar="PATH", help="a file already on this computer")
+    at.add_argument("--serial", help="adb serial of the phone (with --from-phone)")
+    at.add_argument("--note", help="what the file is and how it was made, in words, kept in its row")
     tp = sub.add_parser("teach", help="open the Teach window on an export: a profile for its app from a few clicks")
     tp.add_argument("export")
     a = ap.parse_args(argv)
@@ -1207,6 +1336,19 @@ def main(argv=None):
         for name, result, ok in res:
             print(("ok      " if ok else "WARNING ") + f"{name}: {result}")
         return 0 if all(ok for _, _, ok in res) else 1
+
+    if a.cmd == "attach":
+        if a.from_phone and not a.serial:
+            ap.error("--from-phone needs --serial")
+        d = attach_file(a.export, phone_path=a.from_phone, serial=a.serial, local_path=a.file, note=a.note)
+        print(f"attached attachments/{d['file']}: {d['bytes']} bytes, sha256 {d['sha256']}")
+        if d.get("sha256_on_phone"):
+            print("the copy matches the file on the phone (same SHA-256)")
+        if "zip_members" in d:
+            print(f"a zip of {len(d['zip_members'])} files")
+        with open(os.path.join(a.export, "manifest.json"), encoding="utf-8") as f:
+            print("Latest row hash (note it somewhere else):", json.load(f)["hash_chain"]["last_row_hash"])
+        return 0
 
     if a.cmd == "teach":
         import tkinter as tk
