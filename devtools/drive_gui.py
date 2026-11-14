@@ -254,6 +254,7 @@ def scenario_attach():
     note("A: Add a file on the Result step adds it and shows the new hash", "Added attachments/chat export.zip" in said
          and app.hash_value.get() != before and "A zip of 2 files" in said, app.hash_value.get()[:16])
     note("A: the export still checks out, with the file", all(ok for _, _, ok in appwalk.verify_export(app.export)))
+    picture("13a_result_after_add", root)
     z2 = os.path.join(out, "second.txt")
     with open(z2, "w") as f:
         f.write("made-up second file\n")
@@ -262,10 +263,35 @@ def scenario_attach():
     app.show(0)
     app.add_file_earlier()
     yield lambda: True
-    note("A: Add a file to an earlier export", app.earlier.cget("text").startswith("Added attachments/second.txt"),
+    note("A: Add a file to an earlier export", app.earlier.cget("text").startswith("Added second.txt to ")
+         and app.latest_hash(app.export) in app.earlier.cget("text"),
          app.earlier.cget("text")[:40])
+    app.earlier_copy.invoke()
+    note("A: Copy hash copies the new latest row hash", root.clipboard_get() == app.latest_hash(app.export) != "")
     picture("13_add_file", root)
     classic_mod.filedialog.askopenfilename, classic_mod.filedialog.askdirectory, app.ask_note = real
+
+
+def scenario_identity():
+    """I: Document About phone, on the phone this driver was given."""
+    app.refresh_devices()
+    match = [n for n in app.device_box["values"] if n.split()[0] == serial]
+    if not match:
+        note("I: Document About phone skipped (the phone is not connected here)", True)
+        return
+    app.device.set(match[0])
+    app.out.set(out)
+    app.show(0)
+    app.identity_btn.invoke()
+    yield lambda: str(app.identity_btn.cget("state")) == "normal" and getattr(app, "identity_export", None)
+    exp = app.identity_export
+    checks = appwalk.verify_export(exp)
+    shots = [c for c in checks if c[0].startswith("screenshots without a view tree")]
+    note("I: About phone documented, chained and checked", all(ok for _, _, ok in checks) and (shots or any(
+         c[0].startswith("images and view trees") for c in checks)), app.identity_note.cget("text")[:70])
+    app.identity_copy.invoke()
+    note("I: Copy hash copies that export's latest row hash", root.clipboard_get() == app.latest_hash(exp) != "")
+    picture("14_about_phone", root)
 
 
 def home_dir():
@@ -287,6 +313,7 @@ def teach_only():
     check_logo()
     yield from scenario_t()
     yield from scenario_attach()
+    yield from scenario_identity()
 
 
 def quick():

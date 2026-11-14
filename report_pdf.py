@@ -409,6 +409,27 @@ def build(export, out_name="report.pdf"):
                 g.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("ALIGN", (0, 0), (-1, -1), "CENTER")]))
                 story.append(KeepTogether(([heading] if heading else []) + ([note] if i == 0 else []) + [g]))
                 heading = None
+    nt = manifest.get("screenshots_without_tree") or []
+    if nt:
+        # Screens whose view tree the phone would not give (stock Android's About phone: its Uptime line
+        # ticks every second, so the screen is never still). The pictures are the record; read them.
+        story.append(Paragraph("Screenshots without a view tree", st["h"]))
+        story.append(Paragraph(esc("The phone gave no text for these screens, so nothing was read from them. "
+                                   "Each picture's SHA-256 is in its chained row."), st["small"]))
+        cells = [[Image(os.path.join(export, "screens", d["png_file"]), width=2.0 * inch, height=3.4 * inch, kind="proportional"),
+                  Paragraph(esc(f"{d['n']} · {d['png_sha256'][:16]}"), st["cap"])] for d in nt]
+        for i in range(0, len(cells), 3):
+            three = cells[i:i + 3] + [["", ""]] * (3 - len(cells[i:i + 3]))
+            g = Table([[x[0] for x in three], [x[1] for x in three]], colWidths=[2.3 * inch] * 3)
+            g.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("ALIGN", (0, 0), (-1, -1), "CENTER")]))
+            story.append(KeepTogether([g]))
+    ident = manifest.get("identity")
+    if ident and any(ident.get("found", {}).values()):
+        story.append(Paragraph("Read from About phone", st["h"]))
+        names = {"model": "Model", "imei": "IMEI (check digit right)", "phone_number": "Phone number", "serial_number": "Serial number"}
+        for k, label in names.items():
+            for v in ident["found"].get(k, []):
+                story.append(Paragraph(esc(f"{label}: {v['value']} (screenshot S{v['step']})"), st["p"]))
     left = [r for r in lines if str(r["first_seen_step"]) not in used]
     if left:
         story.append(Paragraph("Lines whose screenshot is not in the export", st["h"]))
