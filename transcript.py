@@ -122,7 +122,8 @@ def frame_lines(tree_path, package, profile=None):
             sb = in_box
         if n.get("text"):
             out.append({"text": n.get("text"), "desc": n.get("content-desc") or "", "rid": rid, "parent_rid": parent_rid,
-                        "bounds": b, "side": side_of(sb, cb), "described": False, "in_message_box": bool(in_box)})
+                        "bounds": b, "side": side_of(sb, cb), "described": False, "in_message_box": bool(in_box),
+                        "bubble": sb if sb is not b else None})
         elif n.get("content-desc") and n.get("content-desc") in media_descs:
             # One line per box: Threads repeats a description on a nested view of the same size, and puts
             # "Video preview" inside a shared post that is already a line.
@@ -145,9 +146,38 @@ def frame_lines(tree_path, package, profile=None):
             taken.add(id(n))
             if not nested:
                 out.append({"text": n.get("content-desc"), "desc": n.get("content-desc"), "rid": rid, "parent_rid": parent_rid,
-                            "bounds": b, "side": side_of(sb, cb), "described": True})
+                            "bounds": b, "side": side_of(sb, cb), "described": True, "bubble": sb if sb is not b else None})
     out.sort(key=lambda x: (x["bounds"][1], x["bounds"][0]))
     return out
+
+
+def sides_from_edges(lines, tol=6):
+    """Gives a side to bubbles side_of placed across, from the edge they line up with.
+
+    A chat app lines its bubbles up on one edge per side, whatever their width: on WhatsApp the sent ones
+    end the same distance from the right (2.7% of the list on a moto g47, 3.3% on a Samsung SM-G990E) and
+    the received ones start the same distance from the left (10.2% and 12.5%; in a group the sender's
+    picture sits before them). A long received bubble then sits near the middle and side_of calls it
+    across (moto g47: 10.2% from the left, 11.8% from the right). Here the edges are learned from the
+    bubbles of the same walk that side_of did place: the left edge most left bubbles start at, the right
+    edge most right ones end at, each shared by two bubbles or more. An across bubble that starts at the
+    left edge and does not end at the right one is left, and the other way round. Returns how many
+    bubbles were placed."""
+    from collections import Counter
+    def edge(side, i):
+        c = Counter(b[i] for b in {tuple(x["bubble"]) for x in lines if x.get("bubble") and x["side"] == side})
+        best = c.most_common(1)
+        return best[0][0] if best and best[0][1] >= 2 else None
+    left, right = edge("left", 0), edge("right", 2)
+    moved = set()
+    for x in lines:
+        if x["side"] != "across" or not x.get("bubble") or left is None or right is None:
+            continue
+        at_left, at_right = abs(x["bubble"][0] - left) <= tol, abs(x["bubble"][2] - right) <= tol
+        if at_left != at_right:
+            x["side"] = "left" if at_left else "right"
+            moved.add(tuple(x["bubble"]))
+    return len(moved)
 
 
 def key(line):
@@ -451,6 +481,10 @@ def build(export, profile_folder=None):
         if by_picture:
             notes.append(f"{w['item'] or '(the screen walked)'}: {by_picture} frame(s) shared too little text with the one before; "
                          "the screenshots show the two overlap, so those frames were joined by the pictures")
+        lined_up = sides_from_edges(merged)
+        if lined_up:
+            notes.append(f"{w['item'] or '(the screen walked)'}: {lined_up} bubble(s) sat near the middle of the list; each was "
+                         "given the side of the edge it lines up with, the edge the other bubbles of that side share")
         last_time = ""
         for i, x in enumerate(merged, 1):
             role, direction, basis = classify(x, profile)

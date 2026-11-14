@@ -294,7 +294,10 @@ seen on it. A photo is therefore on the same page as the line that names it.
   it.
 - Lines on the left sat on the left of the screen, lines on the right on the right, as on the
   transcript page. Grey lines are times and other text the app showed, on the side they sat; centred
-  ones spanned the screen, such as dates.
+  ones spanned the screen, such as dates. A bubble that sits near the middle (a long message in a
+  group, after the sender's picture) is placed by the edge it lines up with: chat apps line every
+  bubble of a side up on one edge, and the other bubbles of the walk show which edge that is. A note
+  says when this was done.
 - Under a line, in small grey type: "sent" or "received" with its basis, the app's own description
   where it says more than the line, and how the line joined the screenshot before (see the transcript,
   below). "sent" and "received" appear only for apps AppWalk has a profile for: "the app's own
@@ -578,6 +581,15 @@ On 11 to 13 November 2026.
   preview card (title, snippet, address), so the transcript has the card, not the typed link. The
   fix also turned one short message in the owner's earlier WhatsApp report from received to sent,
   which its screenshot confirms.
+- WhatsApp 2.26.44.90, 14 November, from a tester's exports on a Samsung SM-G990E and a moto g47
+  (Android 16, Spanish): a known-data group chat of 23 messages (texts, a long text, an emoji, a
+  reply, a photo with a caption, five voice notes, two deleted messages), checked against WhatsApp's
+  own Export chat. 0.1.3 gave no direction to the five voice notes, and none to the long text on the
+  moto g47, where the received bubble starts after the sender's picture and sits near the middle.
+  With the voice note's view (`audio_seekbar`) in the profile and centred bubbles placed by the edge
+  they line up with, every one came out right on both phones: 16 texts, 5 voice notes, the photo and
+  the two deleted-message lines. The walks of the earlier dates above gave the same lines and
+  directions as before.
 - Teaching Signal through the 0.1.0 dialog saved a photo's placeholder as the time and a picture as
   the author. The dialog of 0.1.1 takes only text for those and shows the words of each click.
 

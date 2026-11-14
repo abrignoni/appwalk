@@ -1,6 +1,6 @@
 {
   "package": "com.whatsapp",
-  "checked_with": "2.26.44.90 on a Pixel 7a, Android 17, 12 November 2026, one conversation; 13 November 2026, a known-data chat of 13 numbered messages between two phones",
+  "checked_with": "2.26.44.90 on a Pixel 7a, Android 17, 12 November 2026, one conversation; 13 November 2026, a known-data chat of 13 numbered messages between two phones; 14 November 2026, voice notes and a group chat on a Samsung SM-G990E and a moto g47 (Android 16, Spanish), from a tester's exports",
   "message_ids": [
     "message_text",
     "caption"
@@ -11,7 +11,8 @@
   "described_ids": [
     "image",
     "media_container",
-    "video_container"
+    "video_container",
+    "audio_seekbar"
   ],
   "direction_rules": [
     {
