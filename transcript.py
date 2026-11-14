@@ -77,7 +77,7 @@ def frame_lines(tree_path, package, profile=None):
     A profile can also name views that carry only a description (a picture, for example) in
     described_ids. Each becomes a line whose text is that description, marked as described. A named
     view inside another named one is left out, so a picture is one line however deeply it is nested."""
-    root = ET.parse(tree_path).getroot()
+    root = tree_path if hasattr(tree_path, "iter") else ET.parse(tree_path).getroot()
     node, cb = container(root, package)
     if node is None:
         return []
@@ -152,6 +152,85 @@ def frame_lines(tree_path, package, profile=None):
 
 def key(line):
     return (line["text"], short_id(line["rid"]))
+
+
+def text_shift(prev, cur, list_bounds, reveal, tol=6):
+    """Whether the text of two frames says the second continues the first, from where the lines sit.
+
+    prev and cur are frame_lines output. One line of text on both frames is not enough: a title that
+    stays put while the list scrolls, an author's name in a group or a voice note's "0:07" can be on two
+    frames that share nothing (reported by a tester on Samsung and Motorola phones, 14 November 2026). So:
+    - a line at the same place on both frames did not scroll with the list and is left out (fixed);
+    - only lines found once on each frame are used to find the shift, and it must go the way the walk
+      scrolls (reveal above: the old lines move down), or the other way by under 5% of the list;
+    - the shift most of them agree on is checked against every line of the old frame that it would
+      still keep inside the list: each found there on the new frame agrees, each missing disagrees.
+    - when no line moved and most of the old frame's lines are where they were, the screen did not move:
+      shift 0, and those lines agree.
+    Returns {"shift", "agree", "disagree", "fixed", "fixed_keys"}; shift is None when no line moved the
+    right way. text_joins says whether that is enough."""
+    def keyed(lines):
+        out = {}
+        for x in lines:
+            if not x.get("described"):
+                out.setdefault(key(x), []).append(x["bounds"])
+        return out
+    a, b = keyed(prev), keyed(cur)
+    near = lambda u, v: abs(u - v) <= tol
+    # Fixed means not moved at all. A list at its end can move by only a few pixels (LinkedIn, Pixel 7a:
+    # 18 lines moved 6 px), and those lines did scroll.
+    fixed = {k for k in a.keys() & b.keys()
+             if any(abs(p[1] - q[1]) <= 1 and abs(p[3] - q[3]) <= 1 for p in a[k] for q in b[k])}
+    sign = 1 if reveal == "above" else -1
+    # A small move the other way is a list settling back at its end (LinkedIn, Pixel 7a: 18 lines 6 px
+    # up on a walk that reveals above); the frames then share nearly everything, so it joins too.
+    small = (list_bounds[3] - list_bounds[1]) * 5 // 100 if list_bounds else 0
+    votes = []
+    for k in a.keys() & b.keys():
+        if k in fixed or len(a[k]) != 1 or len(b[k]) != 1:
+            continue
+        p, q = a[k][0], b[k][0]
+        # A line cut by the list's edge keeps one edge in place, so either edge can carry the shift.
+        votes.append({d for d in (q[1] - p[1], q[3] - p[3]) if d * sign > 1 or 1 < abs(d) <= small})
+    cands = sorted({d for v in votes for d in v})
+    best, best_n = None, 0
+    for d in cands:
+        n = sum(1 for v in votes if any(near(d, e) for e in v))
+        if n > best_n:
+            best, best_n = d, n
+    if best is None:
+        # Nothing moved: most of the old frame is where it was (a list at its end, read again after a
+        # time on it changed: WhatsApp, Pixel 7a, 15 of 22 lines in place). That is the same screen. One
+        # title in place among lines that changed is not.
+        if len(fixed) >= 2 and len(fixed) * 2 >= len(a):
+            return {"shift": 0, "agree": len(fixed), "disagree": len(a) - len(fixed), "fixed": len(fixed), "fixed_keys": fixed}
+        return {"shift": None, "agree": 0, "disagree": 0, "fixed": len(fixed), "fixed_keys": fixed}
+    top, bottom = (list_bounds[1], list_bounds[3]) if list_bounds else (None, None)
+    agree = disagree = 0
+    for k, boxes in a.items():
+        if k in fixed:
+            continue
+        for p in boxes:
+            t, btm = p[1] + best, p[3] + best
+            if top is not None and (t < top or btm > bottom):
+                continue  # moved off the list, or only partly on it
+            if any(near(t, q[1]) or near(btm, q[3]) for q in b.get(k, [])):
+                agree += 1
+            else:
+                disagree += 1
+    return {"shift": best, "agree": agree, "disagree": disagree, "fixed": len(fixed), "fixed_keys": fixed}
+
+
+def text_joins(shift):
+    """Two lines or more that moved together, and more lines agreeing than not. One line is not enough.
+
+    Measured on 247 neighbouring screenshot pairs from walks of seven apps on a Pixel 7a and an emulator,
+    14 November 2026: of the 86 pairs the one-line rule joined by text, 57 join by two lines or more and
+    28 by the screenshots; one, joined on a single 3-character line cut by the list's edge, does not.
+    On 241 pairs three steps apart, which mostly share nothing, this rule joins 60 (the one-line rule
+    96): 59 are shown to overlap, by the screenshots or by the shifts of the steps between adding up to
+    the same distance, and 1 could not be checked either way."""
+    return shift["agree"] >= 2 and shift["agree"] > shift["disagree"]
 
 
 def join(merged, frame, reveal):
@@ -316,7 +395,7 @@ def build(export, profile_folder=None):
                 current.setdefault("retried_screens", set()).add(d.get("before_screen"))
     rows, notes = [], []
     for w in walks:
-        merged, unjoined, by_picture, prev_png = [], 0, 0, None
+        merged, unjoined, by_picture, prev_png, prev_frame = [], 0, 0, None, None
         retried = {w.get("screen_step", {}).get(n) for n in w.get("retried_screens", set())} - {None}
         set_aside = []
         for step, entry, png, tree in w["frames"]:
@@ -327,18 +406,30 @@ def build(export, profile_folder=None):
                 set_aside.append((step, frame))
                 continue
             before = {id(x) for x in merged}
-            merged, shared = join(merged, frame, w["reveal"])
-            if shared == 0 and frame:
+            if prev_frame is None:
+                merged, shared = join(merged, frame, w["reveal"])
+            else:
                 root = ET.parse(os.path.join(export, "trees", tree)).getroot()
                 _, cb = container(root, package)
-                px = picture_overlap(os.path.join(export, "screens", os.path.basename(prev_png)),
-                                     os.path.join(export, "screens", os.path.basename(png)), cb, w["reveal"]) if prev_png and cb else None
-                if px:
-                    shared = "picture"
-                    by_picture += 1
+                ts = text_shift(prev_frame, frame, cb, w["reveal"])
+                # A line that did not move with the list (a title inside it) is held once, from the first frame.
+                prev_boxes = {(key(x), x["bounds"][1], x["bounds"][3]) for x in prev_frame}
+                kept = frame if ts["shift"] == 0 else \
+                    [x for x in frame if not (key(x) in ts["fixed_keys"] and (key(x), x["bounds"][1], x["bounds"][3]) in prev_boxes)]
+                px = None
+                if not (text_joins(ts) or not frame):
+                    px = picture_overlap(os.path.join(export, "screens", os.path.basename(prev_png)),
+                                         os.path.join(export, "screens", os.path.basename(png)), cb, w["reveal"]) if prev_png and cb else None
+                if text_joins(ts) or px or not frame:
+                    merged, shared = join(merged, kept, w["reveal"])
+                    if px:
+                        shared = "picture"
+                        by_picture += 1
                 else:
+                    # Not shown to continue: placed beyond what is held, not aligned on a line both happen to show.
+                    merged, shared = (kept + merged if w["reveal"] == "above" else merged + kept), 0
                     unjoined += 1
-            prev_png = png
+            prev_png, prev_frame = png, frame
             for x in merged:
                 if id(x) not in before:
                     x["joined"] = shared
@@ -354,10 +445,11 @@ def build(export, profile_folder=None):
                 x["joined"] = 0
             merged = merged + alone
         if unjoined:
-            notes.append(f"{w['item'] or '(the screen walked)'}: {unjoined} frame(s) shared no line with the one before; "
+            notes.append(f"{w['item'] or '(the screen walked)'}: {unjoined} frame(s) not shown to continue the one before "
+                         "(no two lines of text moved together and the screenshots did not clearly overlap); "
                          "lines may be missing or repeated there")
         if by_picture:
-            notes.append(f"{w['item'] or '(the screen walked)'}: {by_picture} frame(s) shared no text with the one before; "
+            notes.append(f"{w['item'] or '(the screen walked)'}: {by_picture} frame(s) shared too little text with the one before; "
                          "the screenshots show the two overlap, so those frames were joined by the pictures")
         last_time = ""
         for i, x in enumerate(merged, 1):

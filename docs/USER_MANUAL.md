@@ -323,10 +323,10 @@ every page, covers every row and every file of the export.
 line was first seen on, where it sat, the app's own description of it, its view id, and how it was
 joined to the screenshot before:
 
-- **yes**: the two screenshots shared a line of text.
-- **by the screenshots**: they shared no text, and the pictures themselves showed that the two
-  overlap (a photo in the shared part, for example).
-- **NO**, shown as NOT JOINED: they shared no text and the pictures did not clearly overlap either.
+- **yes**: two lines of text or more on both screenshots moved together (section 13, step 4).
+- **by the screenshots**: they shared less text than that, and the pictures themselves showed that
+  the two overlap (a photo in the shared part, for example).
+- **NO**, shown as NOT JOINED: neither the text nor the pictures showed that the two overlap.
   Look at the pictures there: something may be missing between them.
 
 ## 11. The export folder and checking it
@@ -492,9 +492,13 @@ What AppWalk does on the phone, in the order it does it. The log has a row for e
    around one screenshot and compares the trees instead.
 3. **A scroll.** It scrolls about 70% of the list's height, so each screenshot is mostly new and
    consecutive screenshots still overlap. `--fraction 0.30` is the cautious setting.
-4. **A join.** Two screenshots continue each other when they share a line of text. A shared
-   description does not count: labels such as a delivery tick or "Photo" repeat on many bubbles. With
-   no shared text, the two screenshots are compared and must clearly overlap. Otherwise AppWalk logs
+4. **A join.** Two screenshots continue each other when at least two lines of text are on both,
+   moved by the same distance the way the list scrolls, and the other lines that distance keeps on
+   the list are there too. One shared line is not enough: a title that stays put, an author's name in
+   a group or a voice note's length can be on two screenshots that share nothing. A line at the same
+   place on both did not scroll and does not count, nor does a line found more than once on a
+   screenshot, nor a shared description (a delivery tick or "Photo" repeats on many bubbles).
+   Short of that, the two screenshots are compared and must clearly overlap. Otherwise AppWalk logs
    it, goes back and comes forward in smaller moves, and the next screenshot has to join the one
    before the miss. Only when the smallest move still does not join is it counted as a gap. Each
    screenshot's log row says how it was joined to the one before. The transcript leaves out of its
@@ -598,6 +602,13 @@ On 11 to 13 November 2026.
 - Joining screenshots by their pictures (section 10): the limits were set on Signal on the Pixel 7a,
   where 67 of 69 neighbouring pairs were confirmed and 0 of 129 pairs that share nothing. Other apps
   were not measured.
+- Joining screenshots by their text (section 13, step 4), 14 November 2026, on the walks above:
+  of 86 neighbouring pairs that 0.1.3 joined on a shared line, 85 still join (57 by two lines or
+  more, 28 by the screenshots); one, joined on a single 3-character line cut by the list's edge, now
+  counts as not joined. Of 241 pairs three screenshots apart, 0.1.3 joined 96 and this rule 60; 59 of
+  those are shown to overlap, and 1 could not be checked either way. The fixed title and the repeated
+  short text that 0.1.3 joined on were found by a tester on Samsung and Motorola phones and are
+  tested on made-up screens.
 - Taking every described item into the transcript would have added 215 lines of delivery ticks and
   thumbnails to one Signal conversation, which is why a profile names the ones it wants.
 - Teaching (section 12): a Google Messages profile taught by two clicks gave the same sent and

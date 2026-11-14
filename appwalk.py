@@ -498,6 +498,7 @@ class Walker:
         if do_rewind and not self.go_to_far_end():
             return self.finish()
         prev_fp, prev_labels, prev_png, unchanged, fraction = None, None, None, 0, self.fraction
+        prev_lines = None
         prev_tree = None
         while True:
             waited = self.pause_gate()
@@ -540,7 +541,9 @@ class Walker:
             labels = tree.labels(self.package)
             same = prev_fp is not None and fp == prev_fp and not self.moved_in_pictures(tree, png, prev_png)
             overlap = None if prev_labels is None else len(labels & prev_labels)
-            joined = None if prev_labels is None or same else self.joined(tree, labels, prev_labels, png, prev_png)
+            import transcript
+            lines = transcript.frame_lines(tree.root, self.package, None)
+            joined = None if prev_labels is None or same else self.joined(tree, lines, prev_lines, png, prev_png)
             if on_tree:
                 on_tree(tree)
             if capture:
@@ -585,7 +588,7 @@ class Walker:
             if s["screens"] >= self.max_screens:
                 s["stop_reason"] = f"cap of {self.max_screens} screens reached; the end was not confirmed"
                 break
-            prev_fp, prev_labels, prev_png = fp, labels, png
+            prev_fp, prev_labels, prev_png, prev_lines = fp, labels, png, lines
             if not self.scroll(tree, fraction):
                 s["stop_reason"] = "nothing to scroll in this window"
                 break
@@ -606,25 +609,29 @@ class Walker:
         import transcript
         return bool(transcript.picture_overlap(prev_png, png, bounds, self.reveal)) if bounds else False
 
-    def joined(self, tree, labels, prev_labels, png, prev_png):
+    def joined(self, tree, lines, prev_lines, png, prev_png):
         """Whether this frame continues the one before, and on what evidence.
 
-        A line of text on both frames joins them. A shared description does not: labels such as a delivery
-        tick or "Photo" repeat on many bubbles (in Signal on a Pixel 7a, two frames shared no text and five
-        such labels each), so they would hide a gap. With no shared text the two screenshots are compared
-        instead (transcript.picture_overlap, the test the transcript uses). Without Pillow, or with no
-        screenshots kept, the old rule stands: any shared label joins."""
-        text = sum(1 for lab in labels & prev_labels if lab[1])
-        if text:
-            return {"joined": True, "by": "text", "text_shared": text}
+        Text joins two frames when two lines or more moved together by the same distance and the rest of
+        what that distance keeps on the list agrees (transcript.text_shift and text_joins). One shared line
+        is not enough: a title that stays put, an author's name in a group or a voice note's "0:07" can be
+        on two frames that share nothing (reported by a tester on Samsung and Motorola phones, 14 November 2026). A shared
+        description never counted: "Photo" or a delivery tick repeats on many bubbles. Short of that the
+        two screenshots are compared (transcript.picture_overlap). Without Pillow, or with no screenshots
+        kept, one line that moved the right way is taken, and the record says the pictures were not compared."""
+        import transcript
+        box = tree.scroll_container(self.package)
+        bounds = box["bounds"] if box else None
+        ts = transcript.text_shift(prev_lines or [], lines, bounds, self.reveal)
+        seen = {"text_shared": ts["agree"], "text_not_found": ts["disagree"], "fixed_lines": ts["fixed"], "shift_px": ts["shift"]}
+        if transcript.text_joins(ts):
+            return {"joined": True, "by": "text", **seen}
         if png and prev_png and pixels_available():
-            import transcript
-            box = tree.scroll_container(self.package)
-            px = transcript.picture_overlap(prev_png, png, box["bounds"] if box else None, self.reveal) if box else None
-            return {"joined": bool(px), "by": "screenshots", "text_shared": 0, "overlap_px": px}
-        if not (labels and prev_labels):
-            return {"joined": True, "by": "nothing to compare", "text_shared": 0}
-        return {"joined": bool(labels & prev_labels), "by": "any shared label (no screenshots to compare)", "text_shared": 0}
+            px = transcript.picture_overlap(prev_png, png, bounds, self.reveal) if bounds else None
+            return {"joined": bool(px), "by": "screenshots", "overlap_px": px, **seen}
+        if not (lines and prev_lines):
+            return {"joined": True, "by": "nothing to compare", **seen}
+        return {"joined": ts["agree"] >= 1, "by": "one line of text or more (no screenshots to compare)", **seen}
 
     def finish(self):
         s = self.summary

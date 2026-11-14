@@ -1050,7 +1050,7 @@ def plain_summary(result):
     if blank:
         out.append((True, f"{blank} screenshots are black: the app blocks screenshots there. The text for those screens is in the transcript only."))
     for n in result["manifest"].get("transcript_notes", []):
-        if "shared no line" in n or "not written" in n:
+        if "not shown to continue" in n or "shared no line" in n or "not written" in n:
             out.append((True, "Transcript: " + n))
     note = result["manifest"].get("report_note", "")
     if note.startswith("report.pdf not written"):
