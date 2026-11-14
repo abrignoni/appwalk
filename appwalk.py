@@ -1255,8 +1255,9 @@ def imei_by_settings_search(export, dev, say=print, word="IMEI"):
 # never the call button.
 DIAL_KEYS = ("star", "pound", "zero", "six", "pound")
 # The key that deletes the 0 the dialer was opened with: deleteButton on the Google dialer (emulator,
-# Android 15). Add another id only from a dialer that showed it.
-DELETE_KEYS = ("deleteButton",)
+# Android 15), very_right_frame on the Samsung dialer ("Eliminar último dígito", SM-G990E, One UI 8,
+# 14 November 2026). Add another id only from a dialer that showed it.
+DELETE_KEYS = ("deleteButton", "very_right_frame")
 
 
 def call_log_state(dev):
