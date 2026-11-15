@@ -652,6 +652,26 @@ the 84 of received ones. Rebuilt with both changes, the 8 earlier Signal walks o
 every line and its order; 19 message lines there change direction, all to sent (14 had none, 5 were
 received), and each of those bubbles holds the delivery tick.
 
+**The same two phones, WhatsApp 2.26.44.90**, 15 November: a known-data chat between them of 34
+messages (2 short texts, 30 numbered texts of varied length and a photo each way), sent and logged
+the same way. Walked from the chat (8 and 7 screenshots) and through Rows I choose (11 and 10), no
+gaps, export check passed: on both phones and both ways, the 30 numbered texts in order, each
+exactly as logged and with the right direction, the 2 short texts once each with the right
+direction, and the photos as one sent and one received picture line. Rows I choose found three
+faults on the way there, all fixed:
+
+- WhatsApp's home is a page that swipes sideways between tabs (a ViewPager), larger than the chat
+  list inside it, and it was taken for the list: its only row was the search bar. A view that pages
+  sideways is no longer taken for the list.
+- WhatsApp's Meta AI button keeps turning over the chat list, in a box under 1% of the list. Two
+  screenshots never agreed, and on a list that is mostly empty the pictures lined up at a shift that
+  was not there, so the walk took 23 screenshots of one screen. A change that fits in a box under 2%
+  of the list is now taken for an animation, not a move, and a screen where only such a box never
+  stops changing is kept as settled, with a row that says so.
+- With one chat, the chat row and the encryption note under it each had their own first-text id,
+  and the tie between them was broken by chance: one run opened the chat, the next tapped the note.
+  The id of rows that can be tapped themselves now wins.
+
 **The window**, driven through its own controls against the emulator: 38 of 38 checks on macOS
 (Python 3.12), Ubuntu 26.04 (Python 3.14) and Windows 11 (Python 3.11), the last two on ARM64.
 

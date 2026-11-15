@@ -45,7 +45,10 @@ CHAIN_FIELDS = [
     "gnss_time_ms", "kind", "network_time_ms", "prev_hash", "profile_id", "refers_to", "revision_n", "reviewed",
     "scenario_id", "seq", "source", "time_quality", "tz_id", "tz_offset_min", "utc_ms",
 ]
-LIST_CLASSES = ("RecyclerView", "ListView", "ScrollView", "GridView", "ViewPager")
+LIST_CLASSES = ("RecyclerView", "ListView", "ScrollView", "GridView")
+# Views that page sideways (between tabs) are never the list a walk scrolls up and down. WhatsApp 2.26.44.90's
+# home is a ViewPager larger than its chat list, so its only "row" was the search bar (15 November 2026).
+SIDEWAYS_CLASSES = ("ViewPager", "ViewPager2", "HorizontalScrollView")
 BOUNDS = re.compile(r"\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
 
 
@@ -244,7 +247,7 @@ class Tree:
         for rule, test in (("scrollable", lambda n: n.get("scrollable") == "true"),
                            ("list class", lambda n: (n.get("class") or "").endswith(LIST_CLASSES)),
                            ("window", lambda n: True)):
-            cands = [(area(n), n) for n in self.nodes(package) if test(n)]
+            cands = [(area(n), n) for n in self.nodes(package) if test(n) and not (n.get("class") or "").endswith(SIDEWAYS_CLASSES)]
             cands = [(a, n) for a, n in cands if a[0] > 0]
             if cands:
                 (_, box), node = max(cands, key=lambda c: c[0][0])
@@ -293,13 +296,22 @@ def tree_rows(tree, package):
         tm = BOUNDS.match(texts[0].get("bounds") or "")
         tl, tt, tr, tb = map(int, tm.groups()) if tm else (l, t, r, b)
         out.append({"title": texts[0].get("text"), "texts": [n.get("text") for n in texts], "bounds": [l, t, r, b],
-                    "title_id": texts[0].get("resource-id") or "",
+                    "title_id": texts[0].get("resource-id") or "", "clickable": child.get("clickable") == "true",
                     "fully_visible": t >= ct and b <= cb and (b - t) >= 40, "tap": ((tl + tr) // 2, (tt + tb) // 2)})
     # A row cut off by the edge of the list loses its first lines, and its next line (a preview of the
     # last message, say) would be taken for its title. Seen with Fossify Messages. So a row counts only
     # when its first text carries the same view id as most rows' first text.
+    # With as many of one id as of another (one chat and WhatsApp's "end-to-end encrypted" note under it, moto g
+    # play, 15 November 2026) the id of rows that can be tapped themselves wins: the chat row is clickable, the
+    # note is not (only its link is). With no winner either way no row is left out. A tie was broken by set
+    # order before, so the same screen gave the chat on one run and the note on the next.
     ids = [r["title_id"] for r in out if r["title_id"]]
-    usual = max(set(ids), key=ids.count) if len(ids) >= 2 else None
+    usual = None
+    if len(ids) >= 2:
+        score = {i: (ids.count(i), sum(1 for r in out if r["title_id"] == i and r["clickable"])) for i in set(ids)}
+        ranked = sorted(score.items(), key=lambda kv: kv[1], reverse=True)
+        if len(ranked) == 1 or ranked[0][1] > ranked[1][1]:
+            usual = ranked[0][0]
     for r in out:
         r["whole"] = usual is None or r["title_id"] == usual
     return out
@@ -331,6 +343,27 @@ def same_area(png_a, png_b, bounds):
     edge = max(4, a.width * 15 // 1000)
     a, b = a.crop((0, 0, a.width - edge, a.height)), b.crop((0, 0, b.width - edge, b.height))
     return ImageChops.difference(a, b).getbbox() is None
+
+
+def changed_share(png_a, png_b, bounds):
+    """The share of the list's area inside the box around every pixel that differs between two screenshots
+    (0 when none does), with the scrollbar strip left out as in same_area; None without Pillow."""
+    try:
+        from PIL import Image, ImageChops
+    except ImportError:
+        return None
+    a = Image.open(io.BytesIO(png_a)).convert("RGB")
+    b = Image.open(io.BytesIO(png_b)).convert("RGB")
+    if a.size != b.size:
+        return 1.0
+    if bounds:
+        a, b = a.crop(tuple(bounds)), b.crop(tuple(bounds))
+    edge = max(4, a.width * 15 // 1000)
+    a, b = a.crop((0, 0, a.width - edge, a.height)), b.crop((0, 0, b.width - edge, b.height))
+    box = ImageChops.difference(a, b).getbbox()
+    if not box:
+        return 0.0
+    return (box[2] - box[0]) * (box[3] - box[1]) / max(1, a.width * a.height)
 
 
 def is_blank(png):
@@ -484,6 +517,15 @@ class Walker:
             if same_area(png, again, box["bounds"] if box else None):
                 return after, png, stamp, attempt
             self.sleep(self.settle_s)
+        # Never still, but only inside a small box: an animation that does not stop (WhatsApp 2.26.44.90's Meta AI
+        # button over its chat list, under 1% of the list, Galaxy A16 5G and moto g play). The list itself is
+        # still, so the screenshot is kept as settled and the row says why. A label that changes once and then
+        # stops (Signal's floating date) is waited out by the tries above, as before.
+        share = changed_share(png, again, box["bounds"] if box else None) if after is not None else None
+        if share is not None and share < 0.02:
+            self.add("system_event", "small_animation_ignored", {"changed_share_of_list": round(share, 4),
+                                                                 "why": "only a small part of the list kept changing"})
+            return after, png, stamp, 3
         self.summary["unsettled"] += 1
         return after, png, stamp, -1
 
@@ -643,6 +685,12 @@ class Walker:
         box = tree.scroll_container(self.package)
         bounds = box["bounds"] if box else None
         if same_area(prev_png, png, bounds):
+            return False
+        # Everything that changed fits in a small box: an animation, not a move. WhatsApp 2.26.44.90's Meta AI
+        # button turns over its chat list (Galaxy A16 5G, 15 November 2026): a 135 by 132 px box, under 1% of
+        # the list, and on a list that is mostly empty the pictures then line up at a shift that is not there.
+        share = changed_share(prev_png, png, bounds)
+        if share is not None and share < 0.02:
             return False
         import transcript
         return bool(transcript.picture_overlap(prev_png, png, bounds, self.reveal)) if bounds else False

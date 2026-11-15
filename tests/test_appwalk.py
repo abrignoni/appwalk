@@ -747,6 +747,83 @@ class WheelTests(unittest.TestCase):
         self.assertTrue(s["end_confirmed"])
 
 
+class SmallAnimationTests(unittest.TestCase):
+    def test_a_small_animated_button_over_a_short_list_does_not_keep_the_walk_going(self):
+        # WhatsApp's Meta AI button over a chat list with one chat (Galaxy A16 5G): the tree never changed,
+        # the button changed between screenshots, and the mostly empty pictures lined up at a false shift,
+        # so the walk took 23 screenshots of one screen.
+        if not appwalk.pixels_available():
+            self.skipTest("needs Pillow")
+
+        class Orb(FakePhone):
+            def swipe(self, x1, y1, x2, y2, ms):
+                super().swipe(x1, y1, x2, y2, ms)
+                self.turn = getattr(self, "turn", 0) + 1
+
+            def screenshot(self):
+                from PIL import Image, ImageDraw
+                im = Image.open(io.BytesIO(super().screenshot())).convert("RGB")
+                shade = 40 + (getattr(self, "turn", 0) * 70) % 200
+                ImageDraw.Draw(im).ellipse([880, 1000, 1000, 1120], fill=(shade, 120, 255 - shade))
+                buf = io.BytesIO()
+                im.save(buf, "PNG")
+                return buf.getvalue()
+        _, _, s = run(Orb(count=2, start="top", draw=True), max_screens=15, reveal="below")
+        self.assertLess(s["screens"], 6)
+        self.assertTrue(s["end_confirmed"], s["stop_reason"])
+
+        # A button that turns on every screenshot never lets two in a row agree; only it changes, so the
+        # screenshots are kept as settled, with a row that says so.
+        class Spinning(Orb):
+            def screenshot(self):
+                self.turn = getattr(self, "turn", 0) + 1
+                return super().screenshot()
+        out, _, s = run(Spinning(count=2, start="top", draw=True), max_screens=15, reveal="below")
+        self.assertEqual(s["unsettled"], 0)
+        self.assertTrue(s["end_confirmed"], s["stop_reason"])
+        rows = [json.loads(x)["action"] for x in open(os.path.join(out, "actions.jsonl"), encoding="utf-8")]
+        self.assertIn("small_animation_ignored", rows)
+        self.assertTrue(all(ok for _, _, ok in appwalk.verify_export(out)))
+
+
+class SidewaysPagerTests(unittest.TestCase):
+    def test_a_sideways_pager_is_not_taken_for_the_list(self):
+        # WhatsApp 2.26.44.90's home (moto g play, 15 November 2026): a ViewPager, larger than the chat list
+        # inside it, scrolls; the list of one chat does not. The pager's only "row" was the search bar.
+        P = "com.example"
+        raw = (f'<?xml version="1.0"?><hierarchy><node package="{P}" class="android.widget.FrameLayout" bounds="[0,0][720,1600]">'
+               f'<node package="{P}" class="androidx.viewpager.widget.ViewPager" resource-id="{P}:id/pager" scrollable="true" bounds="[0,70][720,1434]">'
+               f'<node package="{P}" class="android.widget.LinearLayout" bounds="[0,70][720,1434]">'
+               f'<node package="{P}" class="android.widget.TextView" resource-id="{P}:id/search" text="Search" bounds="[20,90][700,160]" />'
+               f'<node package="{P}" class="androidx.recyclerview.widget.RecyclerView" resource-id="{P}:id/list" scrollable="false" bounds="[0,259][720,1434]">'
+               f'<node package="{P}" class="android.widget.Button" resource-id="{P}:id/row" bounds="[0,272][720,397]">'
+               f'<node package="{P}" class="android.widget.TextView" resource-id="{P}:id/name" text="A chat" bounds="[117,297][328,332]" />'
+               '</node></node></node></node></node></hierarchy>').encode()
+        tree = appwalk.Tree(raw)
+        box = tree.scroll_container(P)
+        self.assertEqual(box["resource_id"], f"{P}:id/list")
+        self.assertEqual([r["title"] for r in tree.rows(P)], ["A chat"])
+        import xml.etree.ElementTree as ET
+        node, _ = transcript.container(ET.fromstring(raw), P)
+        self.assertEqual(node.get("resource-id"), f"{P}:id/list")
+
+
+class RowTieTests(unittest.TestCase):
+    def test_one_chat_and_a_note_under_it_give_the_chat_whatever_the_order(self):
+        # WhatsApp's chat list with one chat: the chat row (clickable) and the encryption note (not clickable,
+        # its link is) each have their own first-text id. The tie used to be broken by set order.
+        P = "com.example"
+        chat = (f'<node package="{P}" class="android.widget.Button" clickable="true" bounds="[0,272][720,397]">'
+                f'<node package="{P}" class="android.widget.TextView" resource-id="{P}:id/name" text="A chat" bounds="[117,297][328,332]" /></node>')
+        note = (f'<node package="{P}" class="android.widget.FrameLayout" clickable="false" bounds="[0,397][720,554]">'
+                f'<node package="{P}" class="android.widget.TextView" resource-id="{P}:id/e2ee" clickable="true" text="A note" bounds="[20,420][700,500]" /></node>')
+        for kids in (chat + note, note + chat):
+            raw = (f'<?xml version="1.0"?><hierarchy><node package="{P}" class="androidx.recyclerview.widget.RecyclerView" '
+                   f'scrollable="false" bounds="[0,259][720,1434]">{kids}</node></hierarchy>').encode()
+            rows = appwalk.Tree(raw).rows(P)
+            self.assertEqual([r["title"] for r in rows if r["whole"]], ["A chat"])
+
+
 class TextShiftTests(unittest.TestCase):
     """transcript.text_shift on made-up frames: what two frames' text says about whether they overlap."""
 

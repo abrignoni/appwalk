@@ -25,7 +25,8 @@ import sys
 import xml.etree.ElementTree as ET
 
 BOUNDS = re.compile(r"\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
-LIST_CLASSES = ("RecyclerView", "ListView", "ScrollView", "GridView", "ViewPager", "WebView")
+LIST_CLASSES = ("RecyclerView", "ListView", "ScrollView", "GridView", "WebView")
+SIDEWAYS_CLASSES = ("ViewPager", "ViewPager2", "HorizontalScrollView")   # as in appwalk.py
 COLUMNS = ["item", "line", "role", "direction", "direction_basis", "side", "text", "app_description", "shown_time",
            "first_seen_step", "screenshot", "resource_id", "bounds_on_that_screenshot", "joined_to_previous_frame"]
 
@@ -47,7 +48,7 @@ def container(root, package):
                  lambda n: True):
         for n in root.iter("node"):
             b = box(n)
-            if n.get("package") != package or not b or not test(n):
+            if n.get("package") != package or not b or not test(n) or (n.get("class") or "").endswith(SIDEWAYS_CLASSES):
                 continue
             area = max(0, b[2] - b[0]) * max(0, b[3] - b[1])
             if area and (best is None or area > best[0]):
