@@ -522,7 +522,10 @@ What AppWalk does on the phone, in the order it does it. The log has a row for e
 
 1. **To the far end.** It first scrolls to the far end of the list without taking screenshots,
    because an app can reopen a list wherever it was left. For a conversation that is the newest
-   message.
+   message. For a list read from the top (a chat list, About phone), it scrolls up with a mouse wheel
+   where the phone takes one, not a finger: a finger dragging down at the top of a list is a gesture
+   in some apps. Signal 8.34.2 turns on its unread filter, and the list then shows nothing (Galaxy A16
+   5G and moto g play, Android 16, 15 November 2026). Where the phone takes no wheel, it drags.
 2. **A settled screenshot.** At each step it takes a screenshot, waits until two quick screenshots in
    a row match it, reads the view tree, and takes one more screenshot. The first is kept only when the
    list looks the same in both. A thin strip at the right edge, where a scrollbar fades out about 2
@@ -554,7 +557,9 @@ What AppWalk does on the phone, in the order it does it. The log has a row for e
    the last screen is in the screenshot but not in the transcript.
 6. **The end, checked.** Before calling an end confirmed, it scrolls a little the other way: "nothing
    moved" can also mean the swipe was not taken. If the screen does not move either way, the result
-   says the end is not confirmed.
+   says the end is not confirmed, unless a quarter of the list or more is empty past its last text:
+   a list with more to show fills that space, so all of it is on the screen (Signal with one chat: its
+   list says it can scroll, and its one row fills 11% to 14% of it on the two phones).
 
 With **Rows I choose**, it reads the list the same way, finds each chosen row going forward through
 the list, taps its title, checks that another screen came up, walks it, then presses Back until the

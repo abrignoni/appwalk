@@ -154,6 +154,34 @@ def run(phone, **kw):
     return out, log, summary
 
 
+class PullToFilterPhone(FakePhone):
+    """A list that turns on a filter, and shows nothing, when a finger drags down at its top (Signal 8.34.2's
+    chat list), and that a mouse wheel scrolls."""
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.filtered, self.wheels = False, []
+
+    def swipe(self, x1, y1, x2, y2, ms):
+        if y2 > y1 and self.offset == 0:
+            self.filtered = not self.filtered
+        super().swipe(x1, y1, x2, y2, ms)
+
+    def wheel(self, x, y, px):
+        self.wheels.append(px)
+        self.offset = int(min(self.max_offset, max(0, self.offset - px)))
+        return True
+
+    def tree_raw(self):
+        if self.filtered:
+            saved, self.count = self.count, 0
+            try:
+                return super().tree_raw()
+            finally:
+                self.count = saved
+        return super().tree_raw()
+
+
 def texts_seen(out):
     seen = set()
     for name in os.listdir(os.path.join(out, "trees")):
@@ -689,6 +717,34 @@ class ContinuityTests(unittest.TestCase):
         s, joins = self.walk()
         self.assertEqual(s["gaps"], 0)
         self.assertTrue(joins and all(j["by"] == "text" for j in joins))
+
+
+class WheelTests(unittest.TestCase):
+    def test_a_list_is_taken_to_its_top_by_the_wheel_not_a_drag(self):
+        # Signal 8.34.2 on a Galaxy A16 5G: dragging down at the top of the chat list turned on its unread
+        # filter, the list went empty and the rewind kept dragging.
+        phone = PullToFilterPhone(count=30, start="middle")
+        out, _, s = run(phone, max_screens=20, reveal="below")
+        self.assertFalse(phone.filtered)
+        self.assertTrue(phone.wheels)
+        self.assertFalse([sw for sw in phone.swipes if sw[1] > sw[0]])      # no finger moved down
+        self.assertTrue(s["rewind_end_confirmed"] and s["end_confirmed"])
+        self.assertEqual(texts_seen(out), {f"item {i:03d}" for i in range(1, 31)})
+
+    def test_a_short_list_that_cannot_move_is_read_as_whole(self):
+        # One row in a list that reports itself as scrolling (Signal with one chat): nothing moves either way,
+        # and the empty stretch below the row shows the list is all on the screen.
+        _, _, s = run(FakePhone(count=2, start="top"), max_screens=5, reveal="below")
+        self.assertTrue(s["end_confirmed"] and s["rewind_end_confirmed"])
+        # A full list that does not move stays unconfirmed: the swipes may not be reaching it.
+        _, _, s = run(FakePhone(count=30, start="top", take_swipes=False), max_screens=5, reveal="below")
+        self.assertFalse(s["end_confirmed"])
+
+    def test_without_a_wheel_the_drag_is_still_used(self):
+        phone = FakePhone(count=30, start="middle")
+        _, _, s = run(phone, max_screens=20, reveal="below")
+        self.assertTrue([sw for sw in phone.swipes if sw[1] > sw[0]])
+        self.assertTrue(s["end_confirmed"])
 
 
 class TextShiftTests(unittest.TestCase):

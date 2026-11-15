@@ -158,6 +158,20 @@ class AdbDevice:
     def swipe(self, x1, y1, x2, y2, ms):
         self.shell(f"input swipe {x1} {y1} {x2} {y2} {ms}")
 
+    def wheel(self, x, y, px):
+        """Turns a mouse wheel over (x, y) to bring about px pixels of what is above into view. A wheel moves
+        the list without a finger: a drag down at the top of a list is a gesture in some apps (Signal 8.34.2
+        turns on its unread filter; others refresh). One notch is 64 dp (Android's default scroll factor).
+        Returns False when the phone did not take it, so the caller can swipe instead."""
+        if not hasattr(self, "_dp"):
+            m = re.search(r"(\d+)\s*$", self.shell("wm density").strip())
+            self._dp = int(m.group(1)) / 160 if m else None
+        if not self._dp:
+            return False
+        notches = max(1, round(px / (64 * self._dp)))
+        out = self.shell(f"input mouse scroll {x} {y} --axis VSCROLL,{notches}; echo rc=$?")
+        return out.strip().endswith("rc=0")
+
     def tap(self, x, y):
         self.shell(f"input tap {x} {y}")
 
@@ -240,6 +254,25 @@ class Tree:
             return None
         box, node = best
         return {"bounds": box, "rule": how, "resource_id": node.get("resource-id"), "class": node.get("class"), "node": node}
+
+
+def list_empty_share(box):
+    """The share of a list's height with no text past its content, at the bottom or at the top (a thread
+    that fills from the bottom), or None when the list holds no text with bounds."""
+    if not box or box.get("node") is None:
+        return None
+    cl, ct, cr, cb = box["bounds"]
+    tops, bottoms = [], []
+    for n in box["node"].iter("node"):
+        m = BOUNDS.match(n.get("bounds") or "")
+        if n.get("text") and m:
+            l, t, r, b = map(int, m.groups())
+            if b > t:
+                tops.append(t)
+                bottoms.append(b)
+    if not tops or cb <= ct:
+        return None
+    return max(cb - max(bottoms), min(tops) - ct, 0) / (cb - ct)
 
 
 def tree_rows(tree, package):
@@ -728,6 +761,12 @@ class Walker:
                           + ("" if back else "; the screen did not return to the same frame afterwards"))
         if box and box["rule"] != "scrollable":
             return True, "the list does not report itself as scrolling and did not move either way: one screen of content"
+        empty = list_empty_share(box)
+        if empty is not None and empty >= 0.25:
+            # A list lays its items out until it is full, so a list with more to show leaves no empty stretch.
+            # Signal 8.34.2 with one chat: the list reports itself as scrolling, its one row fills 11% to 14% of it.
+            return True, (f"the list did not move either way and {round(empty * 100)}% of it is empty past its "
+                          "last text: all of it is on the screen")
         return False, "END NOT CONFIRMED: the screen did not move in either direction, so the swipes may not be reaching the list"
 
     def scroll(self, tree, fraction, reverse=False, phase="walk", ms=None):
@@ -750,6 +789,16 @@ class Walker:
             lo, hi = t + int(h * 0.12), b - int(h * 0.12)
             y1, y2 = (lo, lo + dist) if down else (hi, hi - dist)
         ms = ms or self.swipe_ms
+        # Toward the top of a list that starts at the top (a chat list, About phone), with the wheel where the
+        # phone takes it: at the top, a finger drag down is the app's own gesture, not a scroll.
+        wheel = getattr(self.d, "wheel", None)
+        if self.reveal == "below" and down and wheel and wheel(x, (t + b) // 2, dist):
+            if phase == "walk":
+                self.summary["scrolls"] += 1
+            self.add("auto_event", "scroll", {"by": "mouse wheel", "at": [x, (t + b) // 2], "px": dist, "phase": phase,
+                                              "container": {k: v for k, v in box.items() if k != "node"},
+                                              "reverse": reverse})
+            return True
         self.d.swipe(x, y1, x, y2, ms)
         if phase == "walk":
             self.summary["scrolls"] += 1

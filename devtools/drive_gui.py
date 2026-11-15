@@ -35,6 +35,11 @@ if shots:
     os.makedirs(shots, exist_ok=True)
 appwalk_gui.SETTINGS = os.path.join(out, "settings.json")   # never the real one
 appwalk_gui.classic.SETTINGS = appwalk_gui.SETTINGS   # the plain window reads its own copy of the name
+# A modal box waits for a click nobody makes: answered here, and each question kept for the record. The
+# "Phone identity" box opens once the phone gives a value (the emulator gives an IMEI since #25).
+ASKED = []
+import tkinter.messagebox  # noqa: E402  (the windows import it inside the function that asks)
+tkinter.messagebox.askyesno = lambda title, *a, **k: ASKED.append(title) or True
 DOC = os.environ.get("APPWALK_DOC_PICTURES")   # pictures for the guide: light theme, and no real folder names in them
 if DOC:
     with open(appwalk_gui.SETTINGS, "w", encoding="utf-8") as f:
