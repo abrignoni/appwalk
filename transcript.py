@@ -359,6 +359,11 @@ def classify(line, profile):
     rid = short_id(line["rid"])
     if rid in profile.get("time_ids", []):
         return "time", "", ""
+    # A centred line that is only a time, drawn with a message's own view id: Google Messages on a Galaxy A16
+    # 5G and a moto g play (Android 16, 15 November 2026) shows when a conversation starts that way. Only
+    # centred lines, so a message that says "11:14 PM" stays a message.
+    if line.get("side") == "across" and any(re.fullmatch(p, line["text"].strip()) for p in profile.get("centred_time_patterns", [])):
+        return "time", "", ""
     if rid in profile.get("ignore_ids", []) or any(line["text"].startswith(p) for p in profile.get("ignore_text_prefixes", [])):
         return "other", "", ""
     if rid in profile.get("author_ids", []):

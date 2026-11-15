@@ -672,6 +672,13 @@ faults on the way there, all fixed:
   and the tie between them was broken by chance: one run opened the chat, the next tapped the note.
   The id of rows that can be tapped themselves now wins.
 
+**The same two phones, Google Messages (SMS)**, 15 November: a known-data chat between them of 40
+numbered texts, sent by adb taps, 20 from each phone, on two builds of the app (April and September
+2025). Walked from the chat (15 and 8 screenshots), no gaps, export check passed: on both phones
+the 40 texts in order, each exactly as logged and with the right direction. The time the
+conversation started is a centred line with the message view's id; `centred_time_patterns` makes it
+a time line.
+
 **The same two phones, Messenger**, 15 November: a known-data chat between them of 30 numbered texts
 (15 from each phone, sent by adb taps), plus 4 texts and a photo typed by hand on the phones and the
 opening message. Messenger gives each message as one view with no id, whose text is the sender's first
@@ -824,6 +831,7 @@ own. Teaching writes the same format. What a profile can say:
 | `message_box_descriptions` | for apps whose views have no ids but describe their boxes (Threads: "Chat text message"): text inside a box with one of these descriptions is a message, on the side of its box. A box that runs into the box below it is a quote shown above a reply, and its text is not a message |
 | `described_box_descriptions` | boxes with one of these descriptions (Threads: "Chat animated media message", "Chat post share message") become one line holding the description, as a picture does. Only a box shown whole on a screenshot is taken, once |
 | `message_text_patterns` | regular expressions; a line whose whole text matches one is a message, and its text is the part named `text` (an `author` part may be named too). For apps that put a message in one view with more words around it (Messenger: "<first name>, <message>, double tap to see sent/receive date and time, ..."). The whole line stays in the description column |
+| `centred_time_patterns` | regular expressions; a centred line whose whole text matches one is a time, not a message, even when it carries a message's view id (Google Messages shows when a conversation starts that way: "11:14 PM"). Lines on the left or right are not affected, so a message that says a time stays a message |
 
 An app can change its view ids or its layout with any update, so check a profile's output against the
 screenshots, and say in `checked_with` what it was checked with.

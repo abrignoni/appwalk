@@ -851,6 +851,18 @@ class MessageTextPatternTests(unittest.TestCase):
         self.assertTrue(lines[0]["desc"].startswith("Sam, hello there"))   # the whole line stays in the description
 
 
+class CentredTimeTests(unittest.TestCase):
+    def test_a_centred_time_with_a_message_id_is_a_time_and_a_bubble_saying_a_time_is_not(self):
+        # Google Messages (moto g play, 15 November 2026) shows when a conversation starts as a centred line
+        # drawn with message_text, the message view's id.
+        prof = {"message_ids": ["message_text"], "centred_time_patterns": [r"\d{1,2}:\d{2}\s?[AP]M"],
+                "direction_rules": [{"by": "side", "value": "left", "direction": "received"}]}
+        line = lambda text, side: {"text": text, "rid": "p:id/message_text", "desc": "", "side": side, "bounds": (0, 0, 9, 9)}
+        self.assertEqual(transcript.classify(line("11:14\u202fPM", "across"), prof)[0], "time")
+        self.assertEqual(transcript.classify(line("11:14 PM", "left"), prof)[:2], ("message", "received"))
+        self.assertEqual(transcript.classify(line("see you at 11:14 PM", "across"), prof)[0], "message")
+
+
 class TextShiftTests(unittest.TestCase):
     """transcript.text_shift on made-up frames: what two frames' text says about whether they overlap."""
 
