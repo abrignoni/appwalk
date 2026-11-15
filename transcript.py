@@ -149,6 +149,20 @@ def frame_lines(tree_path, package, profile=None):
                 out.append({"text": n.get("content-desc"), "desc": n.get("content-desc"), "rid": rid, "parent_rid": parent_rid,
                             "bounds": b, "side": side_of(sb, cb), "described": True, "bubble": sb if sb is not b else None})
     out.sort(key=lambda x: (x["bounds"][1], x["bounds"][0]))
+    # A profile can name the shape of a line that holds a message with more around it. Messenger 2026-11
+    # (Galaxy A16 5G and moto g play, 15 November 2026) puts each message in one view with no id, whose text
+    # is "<first name>, <message>, double tap to see sent/receive date and time, double tap and hold to react
+    # on message". The message is taken out of it; the whole line stays in the app's description.
+    patterns = [re.compile(p) for p in (profile or {}).get("message_text_patterns", [])]
+    for x in out:
+        if x.get("described"):
+            continue
+        for pat in patterns:
+            m = pat.fullmatch(x["text"])
+            if m and m.group("text").strip():
+                x["desc"] = x["desc"] or x["text"]
+                x["text"], x["from_pattern"] = m.group("text"), True
+                break
     return out
 
 
@@ -350,6 +364,11 @@ def classify(line, profile):
     if rid in profile.get("author_ids", []):
         return "author", "", ""
     role = "described" if line.get("described") else "message"
+    if line.get("from_pattern"):
+        for rule in profile.get("direction_rules", []):
+            if rule["by"] == "side" and line["side"] == rule["value"]:
+                return role, rule["direction"], "side of the screen (inferred)"
+        return role, "", ""
     # A message view with no id of its own, known by its parent's id (Discord names no message text view).
     unnamed_message = not rid and short_id(line.get("parent_rid", "")) in profile.get("message_parent_ids", [])
     # Text with no view id and no named parent, known only by where it sits and how tall its box is

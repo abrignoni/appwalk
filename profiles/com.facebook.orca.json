@@ -1,0 +1,34 @@
+{
+  "package": "com.facebook.orca",
+  "checked_with": "Messenger on a Galaxy A16 5G and a moto g play (2026), Android 16, 15 November 2026, a known-data chat between the two phones",
+  "message_ids": [],
+  "message_text_patterns": [
+    "(?P<author>[^,]+), (?P<text>.+), double tap to see sent/receive date and time, double tap and hold to react on message"
+  ],
+  "direction_rules": [
+    {
+      "by": "description_prefix",
+      "value": "Sent ",
+      "direction": "sent"
+    },
+    {
+      "by": "description_prefix",
+      "value": "Received ",
+      "direction": "received"
+    },
+    {
+      "by": "side",
+      "value": "right",
+      "direction": "sent"
+    },
+    {
+      "by": "side",
+      "value": "left",
+      "direction": "received"
+    }
+  ],
+  "described_box_descriptions": [
+    "Sent photo message",
+    "Received photo message"
+  ]
+}

@@ -460,7 +460,7 @@ key's id is known for the Google dialer and the Samsung dialer.
 
 Without a profile, the transcript gives every line of an app as plain text: no sent or received, no
 times picked out, no pictures named. AppWalk comes with profiles for Google Messages, Fossify
-Messages, WhatsApp, Signal, Discord, Instagram, Threads and LinkedIn. For any other app, or to replace one of those, teach it:
+Messages, WhatsApp, Signal, Messenger, Discord, Instagram, Threads and LinkedIn. For any other app, or to replace one of those, teach it:
 **Teach this app** on the Result step, or for an earlier export:
 
 ```bash
@@ -672,6 +672,18 @@ faults on the way there, all fixed:
   and the tie between them was broken by chance: one run opened the chat, the next tapped the note.
   The id of rows that can be tapped themselves now wins.
 
+**The same two phones, Messenger**, 15 November: a known-data chat between them of 30 numbered texts
+(15 from each phone, sent by adb taps), plus 4 texts and a photo typed by hand on the phones and the
+opening message. Messenger gives each message as one view with no id, whose text is the sender's first
+name, the message and Messenger's hints for the screen reader, so the profile takes the message out of
+that line (`message_text_patterns`) and the side of the screen gives the direction; both test accounts
+had the same first name, so the name could not. Walked from the chat (21 and 18 screenshots), no gaps,
+export check passed: on both phones the 30 numbered texts in order, each exactly as logged and with the
+right direction, the hand-typed texts and the reply with the right direction, and the photo as one
+picture line ("Sent photo message" or "Received photo message", Messenger's own words). The opening
+message is in the screenshot on the phone that sent it but not in that phone's view tree, so the
+transcript there does not have it; the other phone's does.
+
 **The window**, driven through its own controls against the emulator: 38 of 38 checks on macOS
 (Python 3.12), Ubuntu 26.04 (Python 3.14) and Windows 11 (Python 3.11), the last two on ARM64.
 
@@ -811,6 +823,7 @@ own. Teaching writes the same format. What a profile can say:
 | `unnamed_message_min_height` | text with no view id at all, on the left or right, counts as a message when its box is at least this many pixels tall; for apps that give message text no id (Instagram). It is a shape, not something the app names: pixels depend on the phone's screen, so check it on the phone you use |
 | `message_box_descriptions` | for apps whose views have no ids but describe their boxes (Threads: "Chat text message"): text inside a box with one of these descriptions is a message, on the side of its box. A box that runs into the box below it is a quote shown above a reply, and its text is not a message |
 | `described_box_descriptions` | boxes with one of these descriptions (Threads: "Chat animated media message", "Chat post share message") become one line holding the description, as a picture does. Only a box shown whole on a screenshot is taken, once |
+| `message_text_patterns` | regular expressions; a line whose whole text matches one is a message, and its text is the part named `text` (an `author` part may be named too). For apps that put a message in one view with more words around it (Messenger: "<first name>, <message>, double tap to see sent/receive date and time, ..."). The whole line stays in the description column |
 
 An app can change its view ids or its layout with any update, so check a profile's output against the
 screenshots, and say in `checked_with` what it was checked with.

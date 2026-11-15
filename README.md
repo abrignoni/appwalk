@@ -46,7 +46,7 @@ The report shows the latest row hash. Write it down: it covers every row and eve
 export can be checked against it later.
 
 Profiles tell AppWalk which lines are messages, times and pictures, and who sent or wrote them. They
-ship for Google Messages, Fossify Messages, WhatsApp, Signal, Discord, Instagram, Threads and LinkedIn. For any other app,
+ship for Google Messages, Fossify Messages, WhatsApp, Signal, Messenger, Discord, Instagram, Threads and LinkedIn. For any other app,
 **Teach this app** builds one from a few clicks on a screenshot.
 
 ## Learn more

@@ -4,6 +4,7 @@ No adb and no device are used. Every text here is fictional.
 """
 import io
 import json
+import re
 import os
 import shutil
 import struct
@@ -822,6 +823,32 @@ class RowTieTests(unittest.TestCase):
                    f'scrollable="false" bounds="[0,259][720,1434]">{kids}</node></hierarchy>').encode()
             rows = appwalk.Tree(raw).rows(P)
             self.assertEqual([r["title"] for r in rows if r["whole"]], ["A chat"])
+
+
+class MessageTextPatternTests(unittest.TestCase):
+    def test_a_message_is_taken_out_of_a_line_that_holds_more(self):
+        # Messenger (Galaxy A16 5G and moto g play, 15 November 2026): each message is one view with no id,
+        # whose text is "<first name>, <message>, double tap to see ...". Made-up names and texts.
+        P = "com.example.chat"
+        tail = ", double tap to see sent/receive date and time, double tap and hold to react on message"
+        def node(t, b):
+            return (f'<node package="{P}" class="android.view.ViewGroup" resource-id="" text="{t}" content-desc="{t}" '
+                    f'bounds="{b}" />')
+        raw = (f'<?xml version="1.0"?><hierarchy><node package="{P}" class="android.widget.FrameLayout" bounds="[0,0][720,1600]">'
+               + node("Sam, hello there" + tail, "[60,300][400,360]")
+               + node("Sam, see you, then" + tail, "[330,400][690,460]")
+               + node("Sam, this is not, a message", "[60,500][400,560]")
+               + '</node></hierarchy>').encode()
+        import xml.etree.ElementTree as ET
+        prof = {"message_ids": [], "message_text_patterns": ["(?P<author>[^,]+), (?P<text>.+)" + re.escape(tail)],
+                "direction_rules": [{"by": "side", "value": "right", "direction": "sent"},
+                                    {"by": "side", "value": "left", "direction": "received"}]}
+        lines = transcript.frame_lines(ET.fromstring(raw), P, prof)
+        got = [(x["text"], transcript.classify(x, prof)[:2]) for x in lines]
+        self.assertEqual(got[0], ("hello there", ("message", "received")))
+        self.assertEqual(got[1], ("see you, then", ("message", "sent")))   # a comma inside the message is kept
+        self.assertEqual(got[2][1][0], "other")                           # no tail: not a message
+        self.assertTrue(lines[0]["desc"].startswith("Sam, hello there"))   # the whole line stays in the description
 
 
 class TextShiftTests(unittest.TestCase):
