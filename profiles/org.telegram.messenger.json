@@ -1,0 +1,15 @@
+{
+  "package": "org.telegram.messenger",
+  "checked_with": "Telegram 13.2.2 on a Galaxy A16 5G and a moto g play (Android 16, English), 15 November 2026, a known-data chat of 50 numbered texts between the two phones",
+  "message_ids": [],
+  "message_text_patterns": [
+    {
+      "pattern": "(?s)(?P<text>.+?)\\nReceived at \\d.*",
+      "direction": "received"
+    },
+    {
+      "pattern": "(?s)(?P<text>.+?)\\nSent at \\d.*",
+      "direction": "sent"
+    }
+  ]
+}

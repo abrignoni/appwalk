@@ -863,6 +863,80 @@ class CentredTimeTests(unittest.TestCase):
         self.assertEqual(transcript.classify(line("see you at 11:14 PM", "across"), prof)[0], "message")
 
 
+class KeyboardTests(unittest.TestCase):
+    def test_an_open_keyboard_is_closed_before_the_first_swipe(self):
+        events = []
+
+        class WithKeyboard(FakePhone):
+            shown = True
+
+            def keyboard_shown(self):
+                return self.shown
+
+            def back(self):
+                events.append(("back", len(self.swipes)))
+                self.shown = False
+        phone = WithKeyboard(count=30)
+        out, _, s = run(phone, max_screens=5)
+        self.assertEqual(events[0], ("back", 0))          # Back before any swipe
+        rows = [json.loads(x)["action"] for x in open(os.path.join(out, "actions.jsonl"), encoding="utf-8")]
+        self.assertIn("keyboard_closed", rows)
+        self.assertGreater(s["screens"], 0)
+
+    def test_a_keyboard_that_stays_open_stops_the_walk_before_any_swipe(self):
+        class Stuck(FakePhone):
+            def keyboard_shown(self):
+                return True
+
+            def back(self):
+                pass
+        phone = Stuck(count=30)
+        _, _, s = run(phone, max_screens=5)
+        self.assertEqual(phone.swipes, [])
+        self.assertIn("keyboard is open", s["stop_reason"])
+
+
+class FreeBandTests(unittest.TestCase):
+    def test_swipes_start_between_the_bars_drawn_over_the_list(self):
+        # Telegram on a Galaxy A16 5G: the list fills the screen behind its title bar (to y 283) and message box.
+        P = "com.example"
+        raw = (f'<?xml version="1.0"?><hierarchy><node package="{P}" class="android.widget.FrameLayout" bounds="[0,0][1080,2340]">'
+               f'<node package="{P}" class="androidx.recyclerview.widget.RecyclerView" scrollable="true" bounds="[0,0][1080,2340]">'
+               f'<node package="{P}" class="android.widget.TextView" text="m1" bounds="[60,400][600,480]" /></node>'
+               f'<node package="{P}" class="android.widget.FrameLayout" bounds="[0,0][1080,258]" />'
+               f'<node package="{P}" class="android.widget.LinearLayout" bounds="[0,243][1080,283]" />'
+               f'<node package="{P}" class="android.widget.FrameLayout" bounds="[0,1991][1080,2205]" />'
+               '</node></hierarchy>').encode()
+        tree = appwalk.Tree(raw)
+        box = tree.scroll_container(P)
+        self.assertEqual(appwalk.free_band(tree, P, box), (283, 1991))
+        # A list with nothing over it keeps its own bounds.
+        bare = appwalk.Tree(raw.replace(b'bounds="[0,0][1080,258]"', b'bounds="[0,0][10,10]"')
+                            .replace(b'bounds="[0,243][1080,283]"', b'bounds="[0,0][10,10]"')
+                            .replace(b'bounds="[0,1991][1080,2205]"', b'bounds="[0,0][10,10]"'))
+        self.assertEqual(appwalk.free_band(bare, P, bare.scroll_container(P)), (0, 2340))
+
+
+class PatternDirectionTests(unittest.TestCase):
+    def test_a_pattern_can_give_the_direction_the_app_writes_in_the_line(self):
+        # Telegram 13.2.2: every message spans the width (side "across") and ends with the app's own words.
+        prof = {"message_ids": [], "message_text_patterns": [
+            {"pattern": "(?s)(?P<text>.+?)\\nReceived at \\d.*", "direction": "received"},
+            {"pattern": "(?s)(?P<text>.+?)\\nSent at \\d.*", "direction": "sent"}]}
+        P = "com.example"
+        def node(t, top):
+            return (f'<node package="{P}" class="android.view.ViewGroup" text="{t}" content-desc="" '
+                    f'bounds="[0,{top}][1080,{top + 100}]" />')
+        raw = (f'<?xml version="1.0"?><hierarchy><node package="{P}" class="android.widget.FrameLayout" bounds="[0,0][1080,2340]">'
+               + node("hello there&#10;Received at 12:29 AM", 300) + node("see you&#10;Sent at 12:30 AM, Seen", 500)
+               + node("November 15", 700) + '</node></hierarchy>').encode()
+        import xml.etree.ElementTree as ET
+        lines = transcript.frame_lines(ET.fromstring(raw), P, prof)
+        got = [(x["text"], transcript.classify(x, prof)[:2]) for x in lines]
+        self.assertEqual(got, [("hello there", ("message", "received")), ("see you", ("message", "sent")),
+                               ("November 15", ("other", ""))])
+
+
 class TextShiftTests(unittest.TestCase):
     """transcript.text_shift on made-up frames: what two frames' text says about whether they overlap."""
 

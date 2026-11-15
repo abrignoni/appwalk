@@ -460,7 +460,7 @@ key's id is known for the Google dialer and the Samsung dialer.
 
 Without a profile, the transcript gives every line of an app as plain text: no sent or received, no
 times picked out, no pictures named. AppWalk comes with profiles for Google Messages, Fossify
-Messages, WhatsApp, Signal, Messenger, Discord, Instagram, Threads and LinkedIn. For any other app, or to replace one of those, teach it:
+Messages, WhatsApp, Signal, Messenger, Telegram, Discord, Instagram, Threads and LinkedIn. For any other app, or to replace one of those, teach it:
 **Teach this app** on the Result step, or for an earlier export:
 
 ```bash
@@ -522,7 +522,12 @@ What AppWalk does on the phone, in the order it does it. The log has a row for e
 
 1. **To the far end.** It first scrolls to the far end of the list without taking screenshots,
    because an app can reopen a list wherever it was left. For a conversation that is the newest
-   message. For a list read from the top (a chat list, About phone), it scrolls up with a mouse wheel
+   message. Before the first swipe, an open on-screen keyboard is closed with one Back: a swipe that
+   starts on the keyboard types (Telegram on a Galaxy A16 5G, 15 November 2026: a walk over an open
+   keyboard swipe-typed into the message box, nothing sent). If it stays open, the walk does not
+   start. Swipes start and end between views of the app drawn over the list (a title bar, a message
+   box): Telegram draws its list behind both, and a swipe that began on the title bar did not move
+   it. For a list read from the top (a chat list, About phone), it scrolls up with a mouse wheel
    where the phone takes one, not a finger: a finger dragging down at the top of a list is a gesture
    in some apps. Signal 8.34.2 turns on its unread filter, and the list then shows nothing (Galaxy A16
    5G and moto g play, Android 16, 15 November 2026). Where the phone takes no wheel, it drags.
@@ -671,6 +676,14 @@ faults on the way there, all fixed:
 - With one chat, the chat row and the encryption note under it each had their own first-text id,
   and the tie between them was broken by chance: one run opened the chat, the next tapped the note.
   The id of rows that can be tapped themselves now wins.
+
+**The same two phones, Telegram 13.2.2**, 15 November: a known-data chat between them of 50
+numbered texts sent by adb taps, 25 from each phone. Telegram draws every message across the whole
+width, so the side cannot tell the direction, but it ends each one with "Received at <time>" or
+"Sent at <time>, Seen"; the profile takes the text and the direction from those words. Walked from
+the chat (13 and 7 screenshots), no gaps, export check passed: on both phones the 50 texts in order,
+each exactly as logged and with the right direction, and the date line as other text. The first
+walks found the two faults above (the keyboard, the title bar), now fixed.
 
 **The same two phones, Google Messages (SMS)**, 15 November: a known-data chat between them of 40
 numbered texts, sent by adb taps, 20 from each phone, on two builds of the app (April and September
@@ -830,7 +843,7 @@ own. Teaching writes the same format. What a profile can say:
 | `unnamed_message_min_height` | text with no view id at all, on the left or right, counts as a message when its box is at least this many pixels tall; for apps that give message text no id (Instagram). It is a shape, not something the app names: pixels depend on the phone's screen, so check it on the phone you use |
 | `message_box_descriptions` | for apps whose views have no ids but describe their boxes (Threads: "Chat text message"): text inside a box with one of these descriptions is a message, on the side of its box. A box that runs into the box below it is a quote shown above a reply, and its text is not a message |
 | `described_box_descriptions` | boxes with one of these descriptions (Threads: "Chat animated media message", "Chat post share message") become one line holding the description, as a picture does. Only a box shown whole on a screenshot is taken, once |
-| `message_text_patterns` | regular expressions; a line whose whole text matches one is a message, and its text is the part named `text` (an `author` part may be named too). For apps that put a message in one view with more words around it (Messenger: "<first name>, <message>, double tap to see sent/receive date and time, ..."). The whole line stays in the description column |
+| `message_text_patterns` | regular expressions; a line whose whole text matches one is a message, and its text is the part named `text` (an `author` part may be named too). An entry can also be `{"pattern": ..., "direction": "sent" or "received"}` when the app writes the direction in the line (Telegram: "Received at 12:29 AM"). For apps that put a message in one view with more words around it (Messenger: "<first name>, <message>, double tap to see sent/receive date and time, ..."). The whole line stays in the description column |
 | `centred_time_patterns` | regular expressions; a centred line whose whole text matches one is a time, not a message, even when it carries a message's view id (Google Messages shows when a conversation starts that way: "11:14 PM"). Lines on the left or right are not affected, so a message that says a time stays a message |
 
 An app can change its view ids or its layout with any update, so check a profile's output against the

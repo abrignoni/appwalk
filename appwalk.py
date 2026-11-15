@@ -178,6 +178,11 @@ class AdbDevice:
     def tap(self, x, y):
         self.shell(f"input tap {x} {y}")
 
+    def keyboard_shown(self):
+        """True when the on-screen keyboard is up, False when it is not, None when the phone does not say."""
+        m = re.search(r"mInputShown=(true|false)", self.shell("dumpsys input_method"))
+        return None if not m else m.group(1) == "true"
+
     def back(self):
         self.shell("input keyevent 4")
 
@@ -276,6 +281,31 @@ def list_empty_share(box):
     if not tops or cb <= ct:
         return None
     return max(cb - max(bottoms), min(tops) - ct, 0) / (cb - ct)
+
+
+def free_band(tree, package, box):
+    """The part of the list a finger can start a swipe on: below views of the app that lie over its top and
+    above those over its bottom without being part of it. Telegram 13.2.2 draws its message list behind its
+    title bar and message box (Galaxy A16 5G, 15 November 2026: the bar ran to y 283 of 2340, and a swipe
+    started at 12% of the list, y 280, landed on it and the list did not move). Returns (top, bottom)."""
+    l, t, r, b = box["bounds"]
+    h = max(1, b - t)
+    inside = {id(n) for n in box["node"].iter("node")}
+    top, bottom = t, b
+    for n in tree.nodes(package):
+        if id(n) in inside:
+            continue
+        m = BOUNDS.match(n.get("bounds") or "")
+        if not m:
+            continue
+        a, nt, c, nb = map(int, m.groups())
+        if (min(c, r) - max(a, l)) < (r - l) * 0.6 or nb - nt >= h * 0.3:
+            continue
+        if nt <= t + h * 0.25 and nb <= t + h * 0.3:
+            top = max(top, nb)
+        elif nb >= b - h * 0.25 and nt >= b - h * 0.3:
+            bottom = min(bottom, nt)
+    return top, bottom
 
 
 def tree_rows(tree, package):
@@ -575,6 +605,8 @@ class Walker:
             "max_screens": self.max_screens, "stable_stops": self.stable_stops, "on_blocked": self.on_blocked,
             "stop_at": self.stop_at,
             "rewind": do_rewind})
+        if not self.keyboard_down():
+            return self.finish()
         if do_rewind and not self.go_to_far_end():
             return self.finish()
         prev_fp, prev_labels, prev_png, unchanged, fraction = None, None, None, 0, self.fraction
@@ -694,6 +726,23 @@ class Walker:
             return False
         import transcript
         return bool(transcript.picture_overlap(prev_png, png, bounds, self.reveal)) if bounds else False
+
+    def keyboard_down(self):
+        """A swipe that starts on the on-screen keyboard types: on a Galaxy A16 5G in Telegram (15 November 2026)
+        400 swipes over an open keyboard swipe-typed "5th" into the message box, nothing sent. So before any
+        scroll the keyboard is closed with one Back, and the walk does not start if it stays up."""
+        shown = getattr(self.d, "keyboard_shown", lambda: None)()
+        if not shown:
+            return True
+        self.d.back()
+        self.sleep(self.settle_s)
+        still = self.d.keyboard_shown()
+        self.add("system_event", "keyboard_closed" if not still else "keyboard_stayed_open",
+                 {"why": "a swipe on the on-screen keyboard would type into the app"})
+        if still:
+            self.summary["stop_reason"] = "the on-screen keyboard is open and did not close, so the walk did not scroll"
+            return False
+        return True
 
     def joined(self, tree, lines, prev_lines, png, prev_png):
         """Whether this frame continues the one before, and on what evidence.
@@ -822,6 +871,11 @@ class Walker:
         if box is None:
             return False
         l, t, r, b = box["bounds"]
+        # Start and end swipes inside the part of the list no overlay covers (free_band).
+        if box.get("node") is not None:
+            ft, fb = free_band(tree, self.package, box)
+            if fb - ft > (b - t) * 0.4:
+                t, b = ft, fb
         h = b - t
         x = (l + r) // 2
         down = (self.reveal == "above") != reverse  # finger moves down to bring earlier content into view

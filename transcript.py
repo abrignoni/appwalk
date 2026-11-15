@@ -153,15 +153,18 @@ def frame_lines(tree_path, package, profile=None):
     # (Galaxy A16 5G and moto g play, 15 November 2026) puts each message in one view with no id, whose text
     # is "<first name>, <message>, double tap to see sent/receive date and time, double tap and hold to react
     # on message". The message is taken out of it; the whole line stays in the app's description.
-    patterns = [re.compile(p) for p in (profile or {}).get("message_text_patterns", [])]
+    # A pattern can also name the direction, when the app writes it in the line: Telegram 13.2.2 ends each
+    # message with "Received at <time>" or "Sent at <time>, Seen", and draws every message across the width.
+    patterns = [(re.compile(p), None) if isinstance(p, str) else (re.compile(p["pattern"]), p.get("direction"))
+                for p in (profile or {}).get("message_text_patterns", [])]
     for x in out:
         if x.get("described"):
             continue
-        for pat in patterns:
+        for pat, direction in patterns:
             m = pat.fullmatch(x["text"])
             if m and m.group("text").strip():
                 x["desc"] = x["desc"] or x["text"]
-                x["text"], x["from_pattern"] = m.group("text"), True
+                x["text"], x["from_pattern"], x["pattern_direction"] = m.group("text"), True, direction
                 break
     return out
 
@@ -370,6 +373,8 @@ def classify(line, profile):
         return "author", "", ""
     role = "described" if line.get("described") else "message"
     if line.get("from_pattern"):
+        if line.get("pattern_direction"):
+            return role, line["pattern_direction"], "the app's own words"
         for rule in profile.get("direction_rules", []):
             if rule["by"] == "side" and line["side"] == rule["value"]:
                 return role, rule["direction"], "side of the screen (inferred)"
