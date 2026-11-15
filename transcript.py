@@ -184,6 +184,21 @@ def key(line):
     return (line["text"], short_id(line["rid"]))
 
 
+RELATIVE_TIME = re.compile(r"^\s*(\d+)\s*(s|sec|secs|m|min|mins|h|hr|hrs)\s*$", re.I)
+
+
+def ticked(older, newer):
+    """Whether a relative time shown on an earlier screenshot can have turned into the one on a later
+    screenshot: the same unit, one step higher ("9m" to "10m"), or "Now" to "1m". Two clock times
+    such as "2:41 PM" and "2:45 PM" are two messages, not one that ticked (Signal on a Pixel 7a,
+    12 November 2026: two pictures with the same description and different clock times)."""
+    if (older or "").strip().lower() == "now":
+        m = RELATIVE_TIME.match(newer or "")
+        return bool(m) and int(m.group(1)) == 1
+    a, b = RELATIVE_TIME.match(older or ""), RELATIVE_TIME.match(newer or "")
+    return bool(a and b) and a.group(2).lower() == b.group(2).lower() and int(b.group(1)) == int(a.group(1)) + 1
+
+
 def text_shift(prev, cur, list_bounds, reveal, tol=6, ticking=()):
     """Whether the text of two frames says the second continues the first, from where the lines sit.
 
@@ -201,7 +216,8 @@ def text_shift(prev, cur, list_bounds, reveal, tol=6, ticking=()):
     right way. text_joins says whether that is enough.
 
     ticking names the views that show a relative time (a profile's time_ids). Such a line can change
-    between two screenshots ("52m" becomes "53m"), so one not found counts neither way: on a Galaxy A16
+    between two screenshots ("52m" becomes "53m"), so one that is found where the shift puts it, one
+    step later (ticked), counts neither way: on a Galaxy A16
     5G in Signal (15 November 2026) the minute turned between two screenshots and all 7 time lines
     changed, which made 7 lines agree and 7 disagree and left the frame unjoined."""
     def keyed(lines):
@@ -246,7 +262,9 @@ def text_shift(prev, cur, list_bounds, reveal, tol=6, ticking=()):
         if k in fixed:
             continue
         for p in boxes:
-            if k[1] in ticking and not any(near(p[1] + best, q[1]) or near(p[3] + best, q[3]) for q in b.get(k, [])):
+            if k[1] in ticking and not any(near(p[1] + best, q[1]) or near(p[3] + best, q[3]) for q in b.get(k, [])) \
+                    and any(k2[1] == k[1] and ticked(k[0], k2[0]) and any(near(p[1] + best, q[1]) for q in qs)
+                            for k2, qs in b.items()):
                 continue
             t, btm = p[1] + best, p[3] + best
             if top is not None and (t < top or btm > bottom):
@@ -292,7 +310,8 @@ def join(merged, frame, reveal, ticking=()):
     for d in range(len(b)):
         n = min(len(b) - d, len(a))
         agree = sum(1 for i in range(n) if b[d + i] == a[i])
-        neutral = sum(1 for i in range(n) if b[d + i] != a[i] and b[d + i][1] == a[i][1] and a[i][1] in ticking)
+        neutral = sum(1 for i in range(n) if b[d + i] != a[i] and b[d + i][1] == a[i][1] and a[i][1] in ticking
+                      and ticked(a[i][0], b[d + i][0]))
         score = agree - (n - agree - neutral)
         if agree and score > best_score:
             best, best_score, best_shared = d, score, agree

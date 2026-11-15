@@ -12,7 +12,8 @@
     "image_view"
   ],
   "bubble_ids": [
-    "body_bubble"
+    "body_bubble",
+    "conversation_item_body_wrapper"
   ],
   "direction_rules": [
     {

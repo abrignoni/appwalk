@@ -636,9 +636,16 @@ phone (16 and 8 screenshots, no gaps, export check passed). On both, the 30 numb
 out in order, each exactly as logged, the 2 short texts once each with the right direction, and the
 photos as two picture lines, one sent and one received. On the Galaxy, the minute shown by Signal's relative times ("9m") turned between two
 screenshots, so every time line changed and the two frames were not joined by text; 7 texts were
-listed twice. A changed time line now counts neither for nor against a join, and the transcript gives
-each text once. Of the 30 numbered texts, 27 have the right direction on each phone; the other 3, whose bubbles span most of the width, have none:
-their side of the screen does not say it, and the transcript leaves it blank.
+listed twice. A time line that reads one step later ("9m" to "10m") now counts neither for nor
+against a join, and the transcript gives each text once; two different clock times still count
+against it. 3 texts on each phone, whose bubbles span most of the width, first had no direction.
+Signal 8.34.2 puts most bubbles in `conversation_item_body_wrapper`, not `body_bubble`; with that
+named as the bubble, their side comes from the edge they line up with, and all 30 numbered texts
+have the right direction on both phones. In these walks Signal's delivery tick
+(`conversation_item_delivery_status`) was inside 76 of the 82 sightings of sent bubbles and none of
+the 84 of received ones. Rebuilt with both changes, the 8 earlier Signal walks on the Pixel 7a keep
+every line and its order; 19 message lines there change direction, all to sent (14 had none, 5 were
+received), and each of those bubbles holds the delivery tick.
 
 **The window**, driven through its own controls against the emulator: 38 of 38 checks on macOS
 (Python 3.12), Ubuntu 26.04 (Python 3.14) and Windows 11 (Python 3.11), the last two on ARM64.
