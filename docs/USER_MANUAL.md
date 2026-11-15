@@ -452,7 +452,8 @@ log did not change. AppWalk's own run of it is tested on the Android 15 emulator
 empty, and on two phones on Android 16. On a moto g play (2026) the dialog's two IMEIs matched About
 phone's, and the call log did not change. On a Samsung Galaxy A16 5G (SM-A166U) the keys were found
 and the field showed `*#06#`, but no dialog opened, for taps and for key events alike; the note says
-so and the call log is still recorded after. On that phone About phone gave both IMEIs. The delete
+so and the call log is still recorded after. Typed by hand on that phone, the code gave "Connection
+problem or invalid MMI code" and no IMEI, so that phone's dialer does not answer `*#06#` at all. On that phone About phone gave both IMEIs. The delete
 key's id is known for the Google dialer and the Samsung dialer.
 
 ## 12. Teach AppWalk an app
