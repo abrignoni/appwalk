@@ -184,7 +184,7 @@ def key(line):
     return (line["text"], short_id(line["rid"]))
 
 
-def text_shift(prev, cur, list_bounds, reveal, tol=6):
+def text_shift(prev, cur, list_bounds, reveal, tol=6, ticking=()):
     """Whether the text of two frames says the second continues the first, from where the lines sit.
 
     prev and cur are frame_lines output. One line of text on both frames is not enough: a title that
@@ -198,7 +198,12 @@ def text_shift(prev, cur, list_bounds, reveal, tol=6):
     - when no line moved and most of the old frame's lines are where they were, the screen did not move:
       shift 0, and those lines agree.
     Returns {"shift", "agree", "disagree", "fixed", "fixed_keys"}; shift is None when no line moved the
-    right way. text_joins says whether that is enough."""
+    right way. text_joins says whether that is enough.
+
+    ticking names the views that show a relative time (a profile's time_ids). Such a line can change
+    between two screenshots ("52m" becomes "53m"), so one not found counts neither way: on a Galaxy A16
+    5G in Signal (15 November 2026) the minute turned between two screenshots and all 7 time lines
+    changed, which made 7 lines agree and 7 disagree and left the frame unjoined."""
     def keyed(lines):
         out = {}
         for x in lines:
@@ -241,6 +246,8 @@ def text_shift(prev, cur, list_bounds, reveal, tol=6):
         if k in fixed:
             continue
         for p in boxes:
+            if k[1] in ticking and not any(near(p[1] + best, q[1]) or near(p[3] + best, q[3]) for q in b.get(k, [])):
+                continue
             t, btm = p[1] + best, p[3] + best
             if top is not None and (t < top or btm > bottom):
                 continue  # moved off the list, or only partly on it
@@ -263,18 +270,19 @@ def text_joins(shift):
     return shift["agree"] >= 2 and shift["agree"] > shift["disagree"]
 
 
-def join(merged, frame, reveal):
+def join(merged, frame, reveal, ticking=()):
     """Adds one frame to the sequence. Returns (new sequence, number of shared lines).
 
     The new frame overlaps the end the sequence grows from. Lines can change between two screenshots
     (a relative time such as "2 min" becomes "3 min"), and a line cut off at the frame's edge can be in
     one frame and not the other, so the overlap is found by alignment, not by an exact match: the
     longest run of lines the two share, starting near the edge they meet at. Lines in the overlap that
-    changed keep the version already held."""
+    changed keep the version already held. A changed line of a ticking view (a relative time, see
+    text_shift) counts neither way."""
     if not merged:
         return list(frame), None
     if reveal != "above":
-        out, shared = join(list(reversed(merged)), list(reversed(frame)), "above")
+        out, shared = join(list(reversed(merged)), list(reversed(frame)), "above", ticking)
         return list(reversed(out)), shared
     # Reveal above: the new frame shows earlier lines, then the top of what is already held. Try every place
     # the held sequence could start in the frame; score each by lines that agree minus lines that do not,
@@ -284,7 +292,8 @@ def join(merged, frame, reveal):
     for d in range(len(b)):
         n = min(len(b) - d, len(a))
         agree = sum(1 for i in range(n) if b[d + i] == a[i])
-        score = agree - (n - agree)
+        neutral = sum(1 for i in range(n) if b[d + i] != a[i] and b[d + i][1] == a[i][1] and a[i][1] in ticking)
+        score = agree - (n - agree - neutral)
         if agree and score > best_score:
             best, best_score, best_shared = d, score, agree
     if best is None:
@@ -424,6 +433,7 @@ def build(export, profile_folder=None):
                 # again in smaller moves. The screen it went back from is not part of the sequence.
                 current.setdefault("retried_screens", set()).add(d.get("before_screen"))
     rows, notes = [], []
+    ticking = set((profile or {}).get("time_ids", []))
     for w in walks:
         merged, unjoined, by_picture, prev_png, prev_frame = [], 0, 0, None, None
         retried = {w.get("screen_step", {}).get(n) for n in w.get("retried_screens", set())} - {None}
@@ -437,11 +447,11 @@ def build(export, profile_folder=None):
                 continue
             before = {id(x) for x in merged}
             if prev_frame is None:
-                merged, shared = join(merged, frame, w["reveal"])
+                merged, shared = join(merged, frame, w["reveal"], ticking)
             else:
                 root = ET.parse(os.path.join(export, "trees", tree)).getroot()
                 _, cb = container(root, package)
-                ts = text_shift(prev_frame, frame, cb, w["reveal"])
+                ts = text_shift(prev_frame, frame, cb, w["reveal"], ticking=ticking)
                 # A line that did not move with the list (a title inside it) is held once, from the first frame.
                 prev_boxes = {(key(x), x["bounds"][1], x["bounds"][3]) for x in prev_frame}
                 kept = frame if ts["shift"] == 0 else \
@@ -451,7 +461,7 @@ def build(export, profile_folder=None):
                     px = picture_overlap(os.path.join(export, "screens", os.path.basename(prev_png)),
                                          os.path.join(export, "screens", os.path.basename(png)), cb, w["reveal"]) if prev_png and cb else None
                 if text_joins(ts) or px or not frame:
-                    merged, shared = join(merged, kept, w["reveal"])
+                    merged, shared = join(merged, kept, w["reveal"], ticking)
                     if px:
                         shared = "picture"
                         by_picture += 1

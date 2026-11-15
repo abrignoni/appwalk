@@ -628,6 +628,18 @@ On 11 to 13 November 2026.
 - Teaching Signal through the 0.1.0 dialog saved a photo's placeholder as the time and a picture as
   the author. The dialog of 0.1.1 takes only text for those and shows the words of each click.
 
+**A Galaxy A16 5G (SM-A166U) and a moto g play (2026)**, both Android 16, Signal 8.34.2, 15 November:
+a known-data chat between the two phones of 34 messages (2 short texts, 30 numbered texts of
+varied length, some wrapping over several lines, and a photo each way), sent by adb taps into
+Signal's own message box and logged with their send times. The conversation was walked on each
+phone (16 and 8 screenshots, no gaps, export check passed). On both, the 30 numbered texts came
+out in order, each exactly as logged, the 2 short texts once each with the right direction, and the
+photos as two picture lines, one sent and one received. On the Galaxy, the minute shown by Signal's relative times ("9m") turned between two
+screenshots, so every time line changed and the two frames were not joined by text; 7 texts were
+listed twice. A changed time line now counts neither for nor against a join, and the transcript gives
+each text once. Of the 30 numbered texts, 27 have the right direction on each phone; the other 3, whose bubbles span most of the width, have none:
+their side of the screen does not say it, and the transcript leaves it blank.
+
 **The window**, driven through its own controls against the emulator: 38 of 38 checks on macOS
 (Python 3.12), Ubuntu 26.04 (Python 3.14) and Windows 11 (Python 3.11), the last two on ARM64.
 

@@ -706,6 +706,25 @@ class TextShiftTests(unittest.TestCase):
         self.assertEqual((ts["shift"], ts["agree"], ts["disagree"]), (600, 3, 0))
         self.assertTrue(transcript.text_joins(ts))
 
+    def test_a_relative_time_that_ticked_between_frames_does_not_break_the_join(self):
+        # As in Signal on a Galaxy A16 5G (15 November 2026): every time line read one minute more on the
+        # next screenshot, so as many lines disagreed as agreed.
+        def lines(texts, top):
+            return [{"text": t, "rid": "p:id/" + r, "bounds": (0, top + 100 * i, 500, top + 100 * i + 50),
+                     "described": False, "desc": "", "side": "left"} for i, (t, r) in enumerate(texts)]
+        prev = lines([("m1", "body"), ("9m", "date"), ("m2", "body"), ("9m", "date"), ("m3", "body"), ("8m", "date")], 300)
+        cur = lines([("m0", "body"), ("12m", "date"),
+                     ("m1", "body"), ("10m", "date"), ("m2", "body"), ("10m", "date"), ("m3", "body"), ("9m", "date")], 300)
+        self.assertFalse(transcript.text_joins(transcript.text_shift(prev, cur, self.LIST, "above")))
+        ts = transcript.text_shift(prev, cur, self.LIST, "above", ticking={"date"})
+        self.assertEqual((ts["shift"], ts["agree"], ts["disagree"]), (200, 3, 0))
+        self.assertTrue(transcript.text_joins(ts))
+        merged, shared = transcript.join(list(prev), cur, "above")
+        self.assertEqual(shared, 0)                                   # placed before, so m1 to m3 twice
+        merged, shared = transcript.join(list(prev), cur, "above", {"date"})
+        self.assertEqual(shared, 3)
+        self.assertEqual([x["text"] for x in merged], ["m0", "12m", "m1", "9m", "m2", "9m", "m3", "8m"])
+
     def test_one_line_is_not_enough(self):
         ts = transcript.text_shift([self.line("0:07", 300)], [self.line("0:07", 900)], self.LIST, "above")
         self.assertEqual(ts["agree"], 1)
