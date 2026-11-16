@@ -2,7 +2,7 @@
 
 # AppWalk user manual
 
-For AppWalk 0.1.3, 14 November 2026. What it was tested on is in section 14; anything not listed there
+For AppWalk 0.2.0, 16 November 2026. What it was tested on is in section 14; anything not listed there
 has not been tried.
 
 Every picture in this manual comes from AppWalk driven against an Android 15 emulator with made-up
@@ -460,7 +460,7 @@ key's id is known for the Google dialer and the Samsung dialer.
 
 Without a profile, the transcript gives every line of an app as plain text: no sent or received, no
 times picked out, no pictures named. AppWalk comes with profiles for Google Messages, Fossify
-Messages, WhatsApp, Signal, Messenger, Telegram, Discord, Instagram, Threads and LinkedIn. For any other app, or to replace one of those, teach it:
+Messages, WhatsApp, Signal, Messenger, Telegram, Discord, Instagram, Threads, LinkedIn, Snapchat, Wire, LINE and TikTok. For any other app, or to replace one of those, teach it:
 **Teach this app** on the Result step, or for an earlier export:
 
 ```bash
