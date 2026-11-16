@@ -168,6 +168,7 @@ def frame_lines(tree_path, package, profile=None):
     # showed two screenshots overlap.
     for x in out:
         x["sliver"] = x["bounds"][3] - x["bounds"][1] < 4
+        x["list_width"] = cb[2] - cb[0] if cb else 0
     # A profile can name the shape of a line that holds a message with more around it. Messenger 2026-11
     # (Galaxy A16 5G and moto g play, 15 November 2026) puts each message in one view with no id, whose text
     # is "<first name>, <message>, double tap to see sent/receive date and time, double tap and hold to react
@@ -199,21 +200,28 @@ def sides_from_edges(lines, tol=6):
     bubbles of the same walk that side_of did place: the left edge most left bubbles start at, the right
     edge most right ones end at, each shared by two bubbles or more. An across bubble that starts at the
     left edge and does not end at the right one is left, and the other way round. Returns how many
-    bubbles were placed."""
+    bubbles were placed.
+
+    A line with no bubble of its own is its own bubble (Instagram 455 drawn with Compose, Galaxy A16 5G,
+    16 November 2026: no view ids at all; received text starts 158 px in, after the avatar, and a two-line
+    message ended 904 to 924 px across a 1080 px list, so side_of called it across)."""
     from collections import Counter
+    def bub(x):
+        return x.get("bubble") or (None if x.get("described") else x["bounds"])
     def edge(side, i):
-        c = Counter(b[i] for b in {tuple(x["bubble"]) for x in lines if x.get("bubble") and x["side"] == side})
+        c = Counter(b[i] for b in {tuple(bub(x)) for x in lines if bub(x) and x["side"] == side})
         best = c.most_common(1)
         return best[0][0] if best and best[0][1] >= 2 else None
     left, right = edge("left", 0), edge("right", 2)
     moved = set()
     for x in lines:
-        if x["side"] != "across" or not x.get("bubble") or left is None or right is None:
+        b = bub(x)
+        if x["side"] != "across" or not b or left is None or right is None:
             continue
-        at_left, at_right = abs(x["bubble"][0] - left) <= tol, abs(x["bubble"][2] - right) <= tol
+        at_left, at_right = abs(b[0] - left) <= tol, abs(b[2] - right) <= tol
         if at_left != at_right:
             x["side"] = "left" if at_left else "right"
-            moved.add(tuple(x["bubble"]))
+            moved.add(tuple(b))
     return len(moved)
 
 
@@ -496,7 +504,11 @@ def classify(line, profile):
     least = profile.get("unnamed_message_min_height")
     if not unnamed_message and least and not rid and line["side"] in ("left", "right") and line.get("bounds"):
         b = line["bounds"]
-        unnamed_message = (b[3] - b[1]) >= least
+        # The height is for a list 1080 px wide and scales with it: the same text is fewer pixels tall on a
+        # phone with fewer pixels (moto g play, 720 px: Instagram's one-line messages were 63 px tall, and 110 px
+        # on a Galaxy A16 5G at 1080; labels and names stay under the line on both).
+        width = line.get("list_width") or 1080
+        unnamed_message = (b[3] - b[1]) >= least * width / 1080
     if role == "message" and rid not in profile.get("message_ids", []) and not unnamed_message:
         return "other", "", ""
     for rule in profile.get("direction_rules", []):

@@ -1,6 +1,6 @@
 {
   "package": "com.instagram.android",
-  "checked_with": "Instagram 455.0.0.51.72 on a Pixel 7a, Android 17, 13 November 2026: a known-data chat of 12 messages logged with KDL, and one longer conversation checked against its screenshots",
+  "checked_with": "Instagram 455.0.0.51.72 on a Pixel 7a, Android 17, 13 November 2026: a known-data chat of 12 messages logged with KDL, and one longer conversation checked against its screenshots. The same version on a Galaxy A16 5G and a moto g play (Android 16, English), 16 November 2026, drawn with Compose and no view ids: a known-data chat of 55 texts, all in order with the right direction on both",
   "message_ids": [
     "direct_text_message_text_view"
   ],

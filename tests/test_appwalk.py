@@ -1177,6 +1177,15 @@ class EdgeSideTests(unittest.TestCase):
         date = {"text": "Today", "rid": "p:id/date", "bounds": (400, 50, 680, 90), "side": "across", "described": False, "bubble": None}
         self.assertEqual(transcript.sides_from_edges(self.walk() + [date]), 0)
 
+    def test_lines_with_no_bubble_use_their_own_edges(self):
+        # Instagram 455 drawn with Compose (Galaxy A16 5G): no ids, no bubbles; received text starts at 158.
+        def t(l, r, side, top):
+            return {"text": f"t{top}", "rid": "", "bounds": (l, top, r, top + 100), "side": side, "described": False}
+        lines = [t(158, 600, "left", 100), t(158, 700, "left", 200), t(311, 1057, "right", 300),
+                 t(500, 1057, "right", 400), t(158, 911, "across", 500)]
+        self.assertEqual(transcript.sides_from_edges(lines), 1)
+        self.assertEqual(lines[-1]["side"], "left")
+
 
 class TeachTests(unittest.TestCase):
     """A profile from clicks on a made-up view tree, as the Teach dialog makes it."""
@@ -1730,6 +1739,19 @@ class UnnamedMessageTests(unittest.TestCase):
             self.assertEqual(role == "message", want[x["text"]], x["text"])
             if role == "message":
                 self.assertEqual(direction, {"left": "received", "right": "sent"}[x["side"]], x["text"])
+
+    def test_the_height_scales_with_the_list_width(self):
+        # moto g play, 720 px list: Instagram's one-line messages were 63 px tall (110 px at 1080 on a Galaxy).
+        import transcript
+        prof = {"unnamed_message_min_height": 80,
+                "direction_rules": [{"by": "side", "value": "left", "direction": "received"}]}
+        line = {"text": "Test 731", "rid": "", "desc": "", "side": "left", "bounds": (91, 928, 452, 991),
+                "described": False, "list_width": 720}
+        self.assertEqual(transcript.classify(line, prof)[:2], ("message", "received"))
+        short = dict(line, bounds=(91, 928, 300, 970))   # 42 px: under two thirds of 80
+        self.assertEqual(transcript.classify(short, prof)[0], "other")
+        wide = dict(line, list_width=1080)               # the same 63 px on a 1080 px list is under 80
+        self.assertEqual(transcript.classify(wide, prof)[0], "other")
 
     def test_without_the_option_unnamed_text_stays_other(self):
         transcript, got = self.lines()

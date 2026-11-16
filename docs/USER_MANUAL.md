@@ -710,6 +710,18 @@ text (`chat_ui_message_text`), times and day lines, and the bubble for the side.
 each, with the right direction; the "Read" receipts are other lines. The chat itself showed no ads;
 LINE's home and chat list do.
 
+**The same two phones, Instagram 455.0.0.51.72**, 16 November: a known-data direct-message chat of
+60 numbered texts sent by adb taps, taking turns; 5 from the Galaxy were never sent (the taps missed),
+so 55 are in the chat. On both phones this version drew the chat with Compose: no view ids and no
+descriptions at all, so the profile's `unnamed_message_min_height` and the side do the work. Received
+text starts after the avatar, and a wide two-line message leaves about the same gap on the right, so it
+sits near the middle; it is given the side of the edge the other received messages start at. On the
+moto g play the chat window is screenshot-protected: every screenshot is black (the walk reports them
+as blank) and the transcript comes from the view tree only. Walked from the chat (12 and 11
+screenshots), no gaps: on both phones the 55 texts are in order, once each, with the right direction.
+In this version a swipe up at the newest message turns on disappearing messages; the walk scrolls
+toward older messages only and left it off.
+
 **The same two phones, Wire 4.38.1**, 16 November: a known-data chat of 30 numbered texts sent by adb
 taps, taking turns, 15 from each phone. Wire's views carry no ids, so the profile tells messages from
 the rest by what is left: times and days by `time_patterns` ("12:24 AM", "YESTERDAY", "23 MINUTES
@@ -914,7 +926,7 @@ own. Teaching writes the same format. What a profile can say:
 | `bubble_ids` | the view that is a message's bubble; a line's side is then its bubble's side |
 | `direction_rules` | how a sent message is told from a received one, by the app's description or the side of the screen |
 | `single_column` | the app shows every message in one column, so lines are placed on the left |
-| `unnamed_message_min_height` | text with no view id at all, on the left or right, counts as a message when its box is at least this many pixels tall; for apps that give message text no id (Instagram). It is a shape, not something the app names: pixels depend on the phone's screen, so check it on the phone you use |
+| `unnamed_message_min_height` | text with no view id at all, on the left or right, counts as a message when its box is at least this many pixels tall on a list 1080 px wide, scaled to the list's width (on a 720 px list, two thirds of it); for apps that give message text no id (Instagram). It is a shape, not something the app names, so check it on the phone you use |
 | `message_box_descriptions` | for apps whose views have no ids but describe their boxes (Threads: "Chat text message"): text inside a box with one of these descriptions is a message, on the side of its box. A box that runs into the box below it is a quote shown above a reply, and its text is not a message |
 | `described_box_descriptions` | boxes with one of these descriptions (Threads: "Chat animated media message", "Chat post share message") become one line holding the description, as a picture does. Only a box shown whole on a screenshot is taken, once |
 | `described_box_patterns` | regular expressions; a view with no text whose whole description matches one becomes a picture line holding that description. For descriptions that change with each item: Google Messages describes a picture as "You sent an image 5:26 PM." or "<sender> sent an image 5:25 PM." on a view with no id |
