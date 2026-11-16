@@ -696,12 +696,12 @@ The pictures have no text or description in the view tree, so they are in the sc
 shows in the transcript as an author line with no message under it. The chat had been left and opened
 again several times before the walk and still held every text.
 
-**The moto g play, TikTok 47.7.3**, 16 November: a known-data direct-message chat of 20 numbered texts
+**The same two phones, TikTok 47.7.3**, 16 November: a known-data direct-message chat of 20 numbered texts
 sent by adb taps, taking turns between the two phones. TikTok's view ids are short obfuscated names
 (`kxa` for the message text, `pfw` for the times), which can change with any release, so check them on
-the version you walk. Walked from the chat (6 screenshots), no gaps: the 18 texts typed cleanly, the two
-the keyboard garbled as they were typed, and an earlier "Hi" are in order, once each, with the right
-direction. The Galaxy A16 5G was not walked.
+the version you walk. Walked from the chat (6 and 7 screenshots), no gaps: on both phones the 18 texts
+typed cleanly, the two the keyboard garbled as they were typed, and an earlier "Hi" are in order, once
+each, with the right direction.
 
 **The same two phones, LINE 26.17.1**, 16 November: a known-data chat of 20 numbered texts sent by
 adb taps, taking turns, 10 from each phone. LINE names its views, so the profile uses them: the message

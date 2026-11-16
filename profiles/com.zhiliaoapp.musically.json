@@ -1,6 +1,6 @@
 {
   "package": "com.zhiliaoapp.musically",
-  "checked_with": "47.7.3 on a moto g play (Android 16, English), 16 November 2026, a known-data direct-message chat of 20 numbered texts between two phones. TikTok's view ids are short obfuscated names (kxa, pfw) that can change with any release: check them again on another version",
+  "checked_with": "47.7.3 on a Galaxy A16 5G and a moto g play (Android 16, English), 16 November 2026, a known-data direct-message chat of 20 numbered texts between two phones. TikTok's view ids are short obfuscated names (kxa, pfw) that can change with any release: check them again on another version",
   "message_ids": ["kxa"],
   "time_ids": ["pfw"],
   "direction_rules": [
