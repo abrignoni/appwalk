@@ -722,6 +722,11 @@ screenshots), no gaps: on both phones the 55 texts are in order, once each, with
 In this version a swipe up at the newest message turns on disappearing messages; the walk scrolls
 toward older messages only and left it off.
 
+**The same two phones, Threads 455.0.0.55.72**, 16 November: a known-data direct-message chat of 20
+numbered texts sent by adb taps, taking turns, 10 from each phone. The profile made on the Pixel 7a
+works unchanged: Threads describes each text bubble ("Chat text message"). Walked from the chat (7 and
+6 screenshots), no gaps: on both phones the 20 texts are in order, once each, with the right direction.
+
 **The same two phones, Wire 4.38.1**, 16 November: a known-data chat of 30 numbered texts sent by adb
 taps, taking turns, 15 from each phone. Wire's views carry no ids, so the profile tells messages from
 the rest by what is left: times and days by `time_patterns` ("12:24 AM", "YESTERDAY", "23 MINUTES
