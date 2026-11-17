@@ -467,9 +467,20 @@ tapping keys. On that Xiaomi the dialer opened the IMEI dialog by itself. On the
 tester tried, a Nubia Z2351N and the three above, the code only filled the field, so this is used
 only when input is refused. The dialog is kept as above, cut to its bounds, with the call log
 recorded before and after. It cannot be closed without a tap, so AppWalk brings the launcher to the
-front with an intent, and the dialog may stay open behind it. Without input the screen cannot be
-kept awake either, so a long screen timeout helps. This path is tested with made-up screens only; the
-tester tried its steps by hand on the Xiaomi.
+front with an intent, and the dialog may stay open behind it. The dialog can take a moment to fill in,
+so it is read each second, up to eight times, until it shows its OK button and the same IMEIs twice.
+
+Without input AppWalk cannot wake the screen or keep it on. It reads the screen's state from `dumpsys
+power`, which changes nothing, before it reads About phone and again before the dialer. If the screen
+is off, it stops there and the note says so: wake and unlock the phone, then run identify again soon
+after. The tester's Xiaomi turned its screen off 60 seconds after the last touch, and identify took
+about 20 seconds there. "Stay awake" in Developer options or a longer screen timeout would also keep it
+on, but both change the phone under examination, so record it if you use one. The tester ran the
+first version of this path seven times on the Xiaomi. Every export verified and the call log did not
+change. The dialog's IMEIs were read in three runs. In two others the screen was off, and in two with
+the screen on a single reading at 2.5 seconds found none, while readings by hand found both. The
+repeated reading and the screen check came from those runs and are tested with made-up screens. A
+Samsung SM-G990E that takes input read as before.
 
 ## 12. Teach AppWalk an app
 

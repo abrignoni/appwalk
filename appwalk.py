@@ -1382,6 +1382,19 @@ def keep_screen(log, export, png, tree, item, why, **more):
     return d
 
 
+def wakefulness(dev):
+    """The screen's state as `dumpsys power` reports it (Awake, Dozing, Asleep, Dreaming), read only, or None
+    when the phone does not say. On a phone that refuses input nothing can wake the screen, and with it off
+    the dialer's dialog was not read (Xiaomi 25098RA98G, abrignoni/appwalk#54)."""
+    m = re.search(r"mWakefulness=(\w+)", dev.shell("dumpsys power"))
+    return m.group(1) if m else None
+
+
+SCREEN_OFF_NOTE = ("The phone's screen was {state}, and with input refused AppWalk cannot wake it, so {what}. "
+                   "Wake and unlock the phone, then run identify again soon after: the phone's screen timeout "
+                   "starts from the last touch.")
+
+
 def identify_without_input(dev, out, device_label, case=None, say=print):
     """identify on a phone that refuses input events over adb (taps, swipes, keys). Screens can still be
     opened with am start and read, but not touched or scrolled, so About phone is kept as it first shows,
@@ -1394,7 +1407,17 @@ def identify_without_input(dev, out, device_label, case=None, say=print):
     log = AppendLog(export, dev)
     log.add("system_event", "input_refused", {"tried": "input trackball roll 0 0", "answer": dev.input_refused,
                                               "so": "no tap, swipe or key is sent for the rest of this run"})
+    state = wakefulness(dev)
+    log.add("system_event", "screen_state", {"wakefulness": state, "read_from": "dumpsys power"})
     log.close()
+    if state not in (None, "Awake"):
+        note = SCREEN_OFF_NOTE.format(state=state, what="nothing was read")
+        found = identity_from_trees(export)
+        log = AppendLog(export, dev)
+        log.add("system_event", "identity_read", {"found": found, "note": note, "how": "nothing was read: the screen was off"})
+        log.close()
+        refresh_manifest(export, log.rows, dev)
+        return export, found, note
     raw = tree_now(dev)
     tree = Tree(raw) if raw else None
     if tree is not None:
@@ -1429,17 +1452,36 @@ def imei_by_dial_intent(export, dev):
     without a tap, so the launcher is brought to the front with an intent. Only the dialog is kept, cut to
     its bounds, and the call log's size and newest entry are recorded before and after. Returns a note."""
     log = AppendLog(export, dev)
+    state = wakefulness(dev)
+    if state not in (None, "Awake"):
+        log.add("system_event", "dial_imei_code", {"result": "not dialled: the screen was off", "wakefulness": state})
+        log.close()
+        refresh_manifest(export, log.rows, dev)
+        return SCREEN_OFF_NOTE.format(state=state, what="*#06# was not passed to the dialer")
     before = call_log_state(dev)
     same = None
     try:
         dev.shell("am start -W -a android.intent.action.DIAL -d 'tel:*%2306%23'")
-        time.sleep(2.5)
-        raw = tree_now(dev)
-        dialog = Tree(raw) if raw else None
-        imeis = dialog_imeis(dialog) if dialog else []
+        # The dialog can take a moment to come up and to fill in each IMEI: on the Xiaomi one reading at 2.5 s
+        # found none, or one of two, in 3 of 5 runs, while readings by hand at 1 s and 3 s found both
+        # (abrignoni/appwalk#54). So it is read each second, up to 8 times, until the dialog has its OK
+        # button and two readings in a row show the same IMEIs.
+        dialog, imeis, prev, readings = None, [], None, 0
+        for _ in range(8):
+            time.sleep(1)
+            readings += 1
+            raw = tree_now(dev)
+            now = Tree(raw) if raw else None
+            got = dialog_imeis(now) if now else []
+            if now is not None and len(got) >= len(imeis):
+                dialog, imeis = now, got
+            ok = now is not None and any((n.get("resource-id") or "") == "android:id/button1" for n in now.nodes())
+            if ok and got and got == prev:
+                break
+            prev = got
         detail = {"how": "the code passed in the dialer's intent: tel:*%2306%23", "typed": "*#06#",
                   "dialog_package": dialog.front_package if dialog else None, "imeis_in_dialog": len(imeis),
-                  "call_log_before": before}
+                  "readings": readings, "wakefulness_before": state, "call_log_before": before}
         if imeis:
             log.add("system_event", "dial_imei_code", detail)
             png, cut = crop_png(dev.screenshot(), dialog_box(dialog))
@@ -1460,8 +1502,8 @@ def imei_by_dial_intent(export, dev):
         log.close()
         refresh_manifest(export, log.rows, dev)
     if not imeis:
-        return ("*#06# was passed in the dialer's intent but no dialog with an IMEI was read; on most phones the "
-                "code only fills the field." + call_log_note(same))
+        return (f"*#06# was passed in the dialer's intent but no dialog with an IMEI was read in {readings} readings, "
+                "one a second. On some phones the code in the intent only fills the field." + call_log_note(same))
     return (f"*#06# was passed in the dialer's intent and its dialog kept (cut to the dialog); it showed {len(imeis)} "
             "IMEI(s). The dialog could not be closed without a tap, so the launcher was brought to the front."
             + call_log_note(same))

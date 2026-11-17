@@ -1724,6 +1724,8 @@ class IdentityTests(unittest.TestCase):
                     self.screen = "dialog"
                 elif "category.HOME" in cmd:
                     self.screen = "home"
+                if "dumpsys power" in cmd:
+                    return "  mWakefulness=Awake\n"
                 if "call_log" in cmd:
                     return "".join(f"Row: {i} _id={i + 1}, date={1_800_000_000_000 + i}\n" for i in range(self.calls))
                 return ""
@@ -1771,6 +1773,66 @@ class IdentityTests(unittest.TestCase):
         dialog = json.loads([r for r in rows if r["action"] == "screenshot"][-1]["detail"])
         self.assertEqual(Image.open(os.path.join(export, "screens", dialog["png_file"])).size, (1017 - 63, 2127 - 346))
         self.assertTrue(all(ok for _, _, ok in appwalk.verify_export(export)))
+
+    def test_the_dial_intent_dialog_is_read_until_its_imeis_settle(self):
+        # On the Xiaomi in abrignoni/appwalk#54 one early reading found none, or one of two IMEIs.
+        if not appwalk.pixels_available():
+            self.skipTest("needs Pillow")
+        D = "com.google.android.dialer"
+        dialog_reads = []
+
+        class Slow(FakePhone):
+            screen = "home"
+
+            def shell(self, cmd):
+                if "tel:*%2306%23" in cmd:
+                    self.screen = "dialog"
+                if "dumpsys power" in cmd:
+                    return "  mWakefulness=Awake\n"
+                return "No result found." if "call_log" in cmd else ""
+
+            def adb(self, *a, **k):
+                if self.screen != "dialog":
+                    return b"ERROR: could not get idle state."
+                dialog_reads.append(1)
+                n = len(dialog_reads)
+                imeis = ["490154203237518", "356938035643809"][:0 if n == 1 else 1 if n == 2 else 2]
+                ok = '<node package="android" resource-id="android:id/button1" text="OK" bounds="[786,1964][954,2090]" />' if n > 1 else ""
+                nodes = "".join(f'<node package="{D}" text="{i}" bounds="[126,{621 + 70 * j}][561,{685 + 70 * j}]" />'
+                                for j, i in enumerate(imeis))
+                return (f'<?xml version="1.0"?><hierarchy><node package="{D}" bounds="[0,136][1080,2337]">'
+                        f'<node package="{D}" resource-id="android:id/content" bounds="[63,346][1017,2127]">{nodes}{ok}'
+                        '</node></node></hierarchy>').encode()
+        phone = Slow(count=3)
+        out = run(phone)[0]
+        orig_sleep = appwalk.time.sleep
+        appwalk.time.sleep = lambda s: None
+        try:
+            note = appwalk.imei_by_dial_intent(out, phone)
+        finally:
+            appwalk.time.sleep = orig_sleep
+        self.assertIn("2 IMEI", note)
+        self.assertEqual(len(dialog_reads), 4)            # none, one, two, two again: settled
+        self.assertEqual(sorted(v["value"] for v in appwalk.identity_from_trees(out)["imei"]),
+                         ["356938035643809", "490154203237518"])
+        self.assertTrue(all(ok for _, _, ok in appwalk.verify_export(out)))
+
+    def test_with_the_screen_off_the_code_is_not_passed_and_the_note_says_why(self):
+        class Dozing(FakePhone):
+            shells = []
+
+            def shell(self, cmd):
+                self.shells.append(cmd)
+                return "  mWakefulness=Dozing\n" if "dumpsys power" in cmd else ""
+        phone = Dozing(count=3)
+        out = run(phone)[0]
+        note = appwalk.imei_by_dial_intent(out, phone)
+        self.assertIn("Dozing", note)
+        self.assertIn("Wake and unlock", note)
+        self.assertFalse(any("android.intent.action.DIAL" in c for c in phone.shells))
+        rows = [json.loads(x) for x in open(os.path.join(out, "actions.jsonl"), encoding="utf-8")]
+        self.assertIn("not dialled", json.loads(rows[-1]["detail"])["result"])
+        self.assertTrue(all(ok for _, _, ok in appwalk.verify_export(out)))
 
     def test_a_ticking_clock_is_not_a_scroll(self):
         if not appwalk.pixels_available():
