@@ -1639,6 +1639,139 @@ class IdentityTests(unittest.TestCase):
         self.assertNotIn("no search field", note)
         self.assertEqual(phone.opened, (540, 550))     # the result, not the field
 
+    def test_a_refused_input_event_is_noticed_once_and_never_sent_again(self):
+        # As a Xiaomi 25098RA98G (HyperOS, Android 15) answered every `input` (abrignoni/appwalk#53).
+        import subprocess
+        calls = []
+        err = (b"Exception occurred while executing 'swipe':\njava.lang.SecurityException: Injecting input events "
+               b"requires the caller (or the source of the instrumentation, if any) to have the INJECT_EVENTS permission.\n")
+        def fake_run(argv, **k):
+            calls.append(argv)
+            return subprocess.CompletedProcess(argv, 255, b"", err)
+        orig = appwalk.subprocess.run
+        appwalk.subprocess.run = fake_run
+        try:
+            dev = appwalk.AdbDevice("x", adb="adb")
+            self.assertFalse(dev.takes_input())
+            self.assertIn("INJECT_EVENTS", dev.input_refused)
+            for move in (lambda: dev.swipe(1, 2, 3, 4, 5), lambda: dev.tap(1, 2), dev.back):
+                with self.assertRaises(appwalk.InputRefused):
+                    move()
+            self.assertFalse(dev.wheel(1, 2, 300))
+            self.assertEqual(len(calls), 1)                   # only the trackball roll was ever sent
+        finally:
+            appwalk.subprocess.run = orig
+
+    def test_another_input_error_is_not_a_refusal(self):
+        import subprocess
+        orig = appwalk.subprocess.run
+        appwalk.subprocess.run = lambda argv, **k: subprocess.CompletedProcess(argv, 1, b"", b"Error: Unknown command: trackball\n")
+        try:
+            dev = appwalk.AdbDevice("x", adb="adb")
+            self.assertTrue(dev.takes_input())
+            self.assertIsNone(dev.input_refused)
+            with self.assertRaises(RuntimeError) as e:
+                dev.tap(1, 2)
+            self.assertNotIsInstance(e.exception, appwalk.InputRefused)
+        finally:
+            appwalk.subprocess.run = orig
+
+    def test_screenshots_without_a_tree_stop_at_the_first_screen_when_input_is_refused(self):
+        class NoInput(FakePhone):
+            def swipe(self, *a):
+                raise appwalk.InputRefused("the phone refuses input events over adb: INJECT_EVENTS")
+        phone = NoInput(count=3)
+        out = run(phone)[0]
+        before = sum(1 for x in open(os.path.join(out, "actions.jsonl"), encoding="utf-8"))
+        orig_sleep = appwalk.time.sleep
+        appwalk.time.sleep = lambda s: None
+        try:
+            note = appwalk.screenshots_without_tree(out, phone)         # goes to the top first: refused at once
+        finally:
+            appwalk.time.sleep = orig_sleep
+        self.assertIn("not scrolled", note)
+        rows = [json.loads(x) for x in open(os.path.join(out, "actions.jsonl"), encoding="utf-8")]
+        self.assertEqual([r["action"] for r in rows[before:]], ["screenshot_without_tree"])
+        self.assertTrue(all(ok for _, _, ok in appwalk.verify_export(out)))
+
+    def test_identify_on_a_phone_that_refuses_input_reads_the_first_screen_and_the_dial_intent(self):
+        # A phone as Maxitelmo describes the Xiaomi in abrignoni/appwalk#53, with made-up values: About phone
+        # can be opened and read but not scrolled, and *#06# in the dialer's intent opens the IMEI dialog.
+        if not appwalk.pixels_available():
+            self.skipTest("needs Pillow")
+        S, D = "com.android.settings", "com.google.android.dialer"
+
+        class Xiaomi(FakePhone):
+            screen, shells, calls, serial = "about", [], 2, "x"
+            input_refused = None
+
+            def takes_input(self):
+                self.input_refused = "java.lang.SecurityException: ... INJECT_EVENTS permission."
+                return False
+
+            def swipe(self, *a):
+                raise AssertionError("a swipe was sent")
+
+            def tap(self, *a):
+                raise AssertionError("a tap was sent")
+
+            def back(self):
+                raise AssertionError("a key was sent")
+
+            def shell(self, cmd):
+                self.shells.append(cmd)
+                if "tel:*%2306%23" in cmd:
+                    self.screen = "dialog"
+                elif "category.HOME" in cmd:
+                    self.screen = "home"
+                if "call_log" in cmd:
+                    return "".join(f"Row: {i} _id={i + 1}, date={1_800_000_000_000 + i}\n" for i in range(self.calls))
+                return ""
+
+            def adb(self, *a, **k):
+                if self.screen == "about":
+                    return (f'<?xml version="1.0"?><hierarchy><node package="{S}" bounds="[0,0][1080,2400]">'
+                            f'<node package="{S}" text="Model" bounds="[40,400][600,460]" />'
+                            f'<node package="{S}" text="Fake 25" bounds="[40,460][600,520]" /></node></hierarchy>').encode()
+                if self.screen == "dialog":
+                    return (f'<?xml version="1.0"?><hierarchy><node package="{D}" bounds="[0,136][1080,2337]">'
+                            f'<node package="{D}" resource-id="android:id/content" bounds="[63,346][1017,2127]">'
+                            f'<node package="{D}" text="IMEI1" bounds="[126,551][329,621]" />'
+                            f'<node package="{D}" text="490154203237518" bounds="[126,621][561,685]" />'
+                            '</node></node></hierarchy>').encode()
+                return b"ERROR: could not get idle state."
+
+            def screenshot(self):
+                from PIL import Image
+                b = io.BytesIO()
+                Image.new("RGB", (1080, 2400), (200, 200, 200)).save(b, "PNG")
+                return b.getvalue()
+        phone = Xiaomi(count=3)
+        tmp = tempfile.mkdtemp(prefix="appwalk_test_")
+        TEMP_DIRS.append(tmp)
+        orig = appwalk.AdbDevice, appwalk.device_facts, appwalk.time.sleep
+        appwalk.AdbDevice = lambda serial: phone
+        appwalk.device_facts = lambda serial, adb=None: {"model": "Fake 25"}
+        appwalk.time.sleep = lambda s: None
+        try:
+            export, found, note = appwalk.identify("x", tmp, "xiaomi", say=lambda *a: None)
+        finally:
+            appwalk.AdbDevice, appwalk.device_facts, appwalk.time.sleep = orig
+        self.assertEqual([v["value"] for v in found["model"]], ["Fake 25"])
+        self.assertEqual([v["value"] for v in found["imei"]], ["490154203237518"])
+        self.assertIn("refuses input events", note)
+        self.assertIn("same before and after", note)
+        self.assertTrue(any("category.HOME" in c for c in phone.shells))
+        rows = [json.loads(x) for x in open(os.path.join(export, "actions.jsonl"), encoding="utf-8")]
+        actions = [r["action"] for r in rows]
+        for a in ("input_refused", "dial_imei_code", "call_log_checked", "identity_read"):
+            self.assertIn(a, actions)
+        self.assertEqual(actions.count("screenshot"), 2)          # About phone as it showed, and the dialog
+        from PIL import Image
+        dialog = json.loads([r for r in rows if r["action"] == "screenshot"][-1]["detail"])
+        self.assertEqual(Image.open(os.path.join(export, "screens", dialog["png_file"])).size, (1017 - 63, 2127 - 346))
+        self.assertTrue(all(ok for _, _, ok in appwalk.verify_export(export)))
+
     def test_a_ticking_clock_is_not_a_scroll(self):
         if not appwalk.pixels_available():
             self.skipTest("needs Pillow")

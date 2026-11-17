@@ -114,19 +114,60 @@ def find_adb():
             return p
     return "adb"
 
+class InputRefused(RuntimeError):
+    """The phone refuses input events over adb (taps, swipes, keys)."""
+
+
+# What the phone answers when it refuses an input event: a Xiaomi 25098RA98G (HyperOS, Android 15) with
+# "USB debugging (Security settings)" off refused every `input` command with "java.lang.SecurityException:
+# Injecting input events requires the caller ... to have the INJECT_EVENTS permission." and exit code 255
+# (Maxitelmo, abrignoni/appwalk#53).
+INPUT_REFUSED_MARK = "INJECT_EVENTS"
+
+
+def input_refused_line(text):
+    """The line of an error that says the input event was refused, or None."""
+    return next((x.strip() for x in (text or "").splitlines() if INPUT_REFUSED_MARK in x), None)
+
+
 class AdbDevice:
     def __init__(self, serial, adb=None):
         self.serial, self.adb_path = serial, adb or find_adb()
+        # Set by the first input event the phone refuses. From then on no tap, swipe or key is sent.
+        self.input_refused = None
 
     def adb(self, *args, timeout=60, stdin=None):
         p = subprocess.run([self.adb_path, "-s", self.serial, *args], capture_output=True, timeout=timeout,
                            **({"input": stdin} if stdin is not None else {"stdin": subprocess.DEVNULL}))
         if p.returncode != 0:
+            err = p.stderr.decode("utf-8", "replace") + "\n" + p.stdout.decode("utf-8", "replace")
+            refused = input_refused_line(err)
+            if refused:
+                self.input_refused = refused
+                raise InputRefused(f"the phone refuses input events over adb: {refused[:300]}")
             raise RuntimeError(f"adb {' '.join(args[:3])} failed ({p.returncode}): {p.stderr.decode('utf-8', 'replace')[:300]}")
         return p.stdout
 
     def shell(self, cmd, timeout=60):
         return self.adb("shell", cmd, timeout=timeout).decode("utf-8", "replace")
+
+    def input(self, cmd):
+        """Sends an `input` command. Once the phone has refused one, none is sent again."""
+        if self.input_refused:
+            raise InputRefused(f"the phone refuses input events over adb: {self.input_refused[:300]}")
+        return self.shell(f"input {cmd}")
+
+    def takes_input(self):
+        """True when the phone takes input events over adb. Tried with a trackball roll of 0 by 0, which
+        moves nothing (proposed by Maxitelmo, abrignoni/appwalk#41); a Nubia Z2351N took it and returned 0,
+        the Xiaomi in abrignoni/appwalk#53 refused it."""
+        try:
+            self.input("trackball roll 0 0")
+        except InputRefused:
+            return False
+        except RuntimeError:
+            pass    # another error is not a refusal: the run goes on as before and meets it there, if at all
+        return True
 
     def stamp(self):
         """The phone's own clock, read in one shell call. elapsed_ms is the first field of /proc/uptime."""
@@ -159,24 +200,29 @@ class AdbDevice:
         return self.adb("exec-out", "screencap", "-p", timeout=60)
 
     def swipe(self, x1, y1, x2, y2, ms):
-        self.shell(f"input swipe {x1} {y1} {x2} {y2} {ms}")
+        self.input(f"swipe {x1} {y1} {x2} {y2} {ms}")
 
     def wheel(self, x, y, px):
         """Turns a mouse wheel over (x, y) to bring about px pixels of what is above into view. A wheel moves
         the list without a finger: a drag down at the top of a list is a gesture in some apps (Signal 8.34.2
         turns on its unread filter; others refresh). One notch is 64 dp (Android's default scroll factor).
         Returns False when the phone did not take it, so the caller can swipe instead."""
+        if self.input_refused:
+            return False
         if not hasattr(self, "_dp"):
             m = re.search(r"(\d+)\s*$", self.shell("wm density").strip())
             self._dp = int(m.group(1)) / 160 if m else None
         if not self._dp:
             return False
         notches = max(1, round(px / (64 * self._dp)))
-        out = self.shell(f"input mouse scroll {x} {y} --axis VSCROLL,{notches}; echo rc=$?")
+        out = self.shell(f"input mouse scroll {x} {y} --axis VSCROLL,{notches} 2>&1; echo rc=$?")
+        refused = input_refused_line(out)
+        if refused:
+            self.input_refused = refused
         return out.strip().endswith("rc=0")
 
     def tap(self, x, y):
-        self.shell(f"input tap {x} {y}")
+        self.input(f"tap {x} {y}")
 
     def keyboard_shown(self):
         """True when the on-screen keyboard is up, False when it is not, None when the phone does not say."""
@@ -184,11 +230,13 @@ class AdbDevice:
         return None if not m else m.group(1) == "true"
 
     def back(self):
-        self.shell("input keyevent 4")
+        self.input("keyevent 4")
 
     def type_secret(self, secret):
         """Types what the examiner supplied and presses Enter. The text goes to adb on stdin, not on its
         command line, and is never written to the log."""
+        if self.input_refused:
+            raise InputRefused(f"the phone refuses input events over adb: {self.input_refused[:300]}")
         quoted = "'" + secret.replace("'", "'\\''").replace(" ", "%s") + "'"
         self.adb("shell", stdin=f"input text {quoted}\ninput keyevent 66\n".encode("utf-8"))
 
@@ -608,7 +656,9 @@ class Walker:
         except RuntimeError as e:
             # The phone stopped answering as expected (no view tree, no screenshot). The walk ends here with
             # what it has, and says why, so the export is still written and checkable.
-            self.summary["stop_reason"] = f"stopped: the phone did not answer as expected ({e}); the end was not reached"
+            self.summary["stop_reason"] = (f"stopped: {e}; nothing can be scrolled, so the end was not reached"
+                                           if isinstance(e, InputRefused) else
+                                           f"stopped: the phone did not answer as expected ({e}); the end was not reached")
             self.add("system_event", "walk_error", {"error": str(e)[:300]})
             return self.finish()
 
@@ -1263,6 +1313,8 @@ def identify(serial, out, device_label, case=None, say=print):
     # Device details had that walked as About phone (moto g47, reported by a tester, 14 November 2026).
     dev.shell("am start -a android.settings.DEVICE_INFO_SETTINGS -f 0x10008000")
     time.sleep(2)
+    if not dev.takes_input():
+        return identify_without_input(dev, out, device_label, case, say)
     # Stock Android's About phone shows an Uptime line that changes every second, so the screen is never
     # still and uiautomator never gives its tree (Pixel 7a on Android 17, emulator on Android 15). One quick
     # try decides: a tree now means the walk can read it; none means screenshots only, without waiting.
@@ -1309,6 +1361,110 @@ def identify(serial, out, device_label, case=None, say=print):
     log.close()
     refresh_manifest(export, log.rows, dev)
     return export, found, note
+
+
+def keep_screen(log, export, png, tree, item, why, **more):
+    """Keeps one screenshot and its view tree as a chained screenshot row, as a walk would."""
+    steps = [json.loads(r["detail"]).get("step", 0) for r in log.rows if r["action"] == "screenshot"]
+    step = max(steps, default=0) + 1
+    entry = uuid.uuid4().hex
+    png_name, tree_name = f"{step:04d}_{entry}.png", f"{step:04d}_{entry}.xml"
+    with open(os.path.join(export, "screens", png_name), "wb") as f:
+        f.write(png)
+    with open(os.path.join(export, "trees", tree_name), "wb") as f:
+        f.write(tree.xml)
+    d = {"step": step, "item": item, "screen_in_this_walk": 1, "png_file": png_name, "png_sha256": sha256(png),
+         "png_status": "ok", "tree_file": tree_name, "tree_sha256": sha256(tree.xml),
+         "tree_fingerprint": tree.fingerprint(tree.front_package), "capture_attempts": 1,
+         "password_fields_removed": tree.secret_fields, **more, "why": why}
+    log.add("auto_event", "screenshot", d, entry_id=entry, app_package=tree.front_package,
+            conversation_id=item, screenshot={"file": png_name, "sha256": d["png_sha256"], "status": "ok"})
+    return d
+
+
+def identify_without_input(dev, out, device_label, case=None, say=print):
+    """identify on a phone that refuses input events over adb (taps, swipes, keys). Screens can still be
+    opened with am start and read, but not touched or scrolled, so About phone is kept as it first shows,
+    and the *#06# code is passed in the dialer's intent, which on that phone opens the IMEI dialog. Proposed
+    and tried by Maxitelmo on a Xiaomi 25098RA98G (HyperOS, Android 15) with "USB debugging (Security
+    settings)" off (abrignoni/appwalk#53). Returns (export, found, note)."""
+    export = empty_export(dev, out, "phone-identity", device_label, case,
+                          stop_reason="no walk: the phone refuses input events over adb, so About phone was kept as it "
+                                      "first showed, without scrolling")
+    log = AppendLog(export, dev)
+    log.add("system_event", "input_refused", {"tried": "input trackball roll 0 0", "answer": dev.input_refused,
+                                              "so": "no tap, swipe or key is sent for the rest of this run"})
+    log.close()
+    raw = tree_now(dev)
+    tree = Tree(raw) if raw else None
+    if tree is not None:
+        log = AppendLog(export, dev)
+        keep_screen(log, export, dev.screenshot(), tree, "About phone",
+                    "About phone as it first showed; the phone refuses input events, so it was not scrolled")
+        log.close()
+        refresh_manifest(export, log.rows, dev)
+        note = "The phone refuses input events over adb, so only the first screen of About phone was kept and read."
+    else:
+        note = "The phone refuses input events over adb. " + screenshots_without_tree(export, dev, go_to_top=False)
+    found = identity_from_trees(export)
+    if not found["imei"]:
+        note = " ".join((note, imei_by_dial_intent(export, dev)))
+        found = identity_from_trees(export)
+    log = AppendLog(export, dev)
+    log.add("system_event", "identity_read", {"found": found, "note": note,
+                                               "how": "The phone refuses input events over adb, so nothing was tapped or "
+                                                      "scrolled: from the view tree of the first screen of Settings > About "
+                                                      "phone; when it gave no IMEI, of the dialog the dialer opened for "
+                                                      "*#06# passed in its intent; an IMEI only when its check digit is right."})
+    log.close()
+    refresh_manifest(export, log.rows, dev)
+    return export, found, note
+
+
+def imei_by_dial_intent(export, dev):
+    """For a phone that refuses input events: opens the dialer with *#06# in its intent (each # sent as %23).
+    On the Xiaomi in abrignoni/appwalk#53 the Google dialer ran the code and opened the IMEI dialog by
+    itself; on a Nubia Z2351N and the three phones in abrignoni/appwalk#24 the code only filled the field,
+    which is why phones that take taps dial it key by key (imei_by_dialer). The dialog cannot be closed
+    without a tap, so the launcher is brought to the front with an intent. Only the dialog is kept, cut to
+    its bounds, and the call log's size and newest entry are recorded before and after. Returns a note."""
+    log = AppendLog(export, dev)
+    before = call_log_state(dev)
+    same = None
+    try:
+        dev.shell("am start -W -a android.intent.action.DIAL -d 'tel:*%2306%23'")
+        time.sleep(2.5)
+        raw = tree_now(dev)
+        dialog = Tree(raw) if raw else None
+        imeis = dialog_imeis(dialog) if dialog else []
+        detail = {"how": "the code passed in the dialer's intent: tel:*%2306%23", "typed": "*#06#",
+                  "dialog_package": dialog.front_package if dialog else None, "imeis_in_dialog": len(imeis),
+                  "call_log_before": before}
+        if imeis:
+            log.add("system_event", "dial_imei_code", detail)
+            png, cut = crop_png(dev.screenshot(), dialog_box(dialog))
+            keep_screen(log, export, png, dialog, "*#06#",
+                        "the dialog *#06# opens; the picture is cut to the dialog, so the dialer behind it is not kept"
+                        if cut else "the dialog *#06# opens; the picture could not be cut, so it is the whole screen",
+                        png_cut_to_dialog=list(dialog_box(dialog)) if cut else None)
+        else:
+            detail["result"] = "no dialog with an IMEI" if dialog else "the screen gave no view tree"
+            log.add("system_event", "dial_imei_code", detail)
+        # HOME brings the launcher to the front; the dialog may stay open behind it, since OK cannot be tapped.
+        dev.shell("am start -W -a android.intent.action.MAIN -c android.intent.category.HOME")
+        time.sleep(1)
+        after = call_log_state(dev)
+        same = None if before is None or after is None else before == after
+        log.add("system_event", "call_log_checked", {"before": before, "after": after, "unchanged": same})
+    finally:
+        log.close()
+        refresh_manifest(export, log.rows, dev)
+    if not imeis:
+        return ("*#06# was passed in the dialer's intent but no dialog with an IMEI was read; on most phones the "
+                "code only fills the field." + call_log_note(same))
+    return (f"*#06# was passed in the dialer's intent and its dialog kept (cut to the dialog); it showed {len(imeis)} "
+            "IMEI(s). The dialog could not be closed without a tap, so the launcher was brought to the front."
+            + call_log_note(same))
 
 
 # Rows of About phone that lead to the IMEI, lower case. Add a label only from a screen that showed it.
@@ -1515,25 +1671,11 @@ def imei_by_dialer(export, dev, say=print):
             log.add("system_event", "call_log_checked", {"before": before, "after": after, "unchanged": same})
             return "*#06# was typed but no dialog with an IMEI was read." + call_log_note(same)
         log.add("system_event", "dial_imei_code", detail)
-        png = dev.screenshot()
-        png, cut = crop_png(png, dialog_box(dialog))
-        steps = [json.loads(r["detail"]).get("step", 0) for r in log.rows if r["action"] == "screenshot"]
-        step = max(steps, default=0) + 1
-        entry = uuid.uuid4().hex
-        png_name, tree_name = f"{step:04d}_{entry}.png", f"{step:04d}_{entry}.xml"
-        with open(os.path.join(export, "screens", png_name), "wb") as f:
-            f.write(png)
-        with open(os.path.join(export, "trees", tree_name), "wb") as f:
-            f.write(dialog.xml)
-        d = {"step": step, "item": "*#06#", "screen_in_this_walk": 1, "png_file": png_name, "png_sha256": sha256(png),
-             "png_status": "ok", "tree_file": tree_name, "tree_sha256": sha256(dialog.xml),
-             "tree_fingerprint": dialog.fingerprint(dialog.front_package), "capture_attempts": 1,
-             "password_fields_removed": dialog.secret_fields,
-             "png_cut_to_dialog": list(dialog_box(dialog)) if cut else None,
-             "why": "the dialog *#06# opens; the picture is cut to the dialog, so the dialer behind it is not kept"
-                    if cut else "the dialog *#06# opens; the picture could not be cut, so it is the whole screen"}
-        log.add("auto_event", "screenshot", d, entry_id=entry, app_package=dialog.front_package,
-                conversation_id="*#06#", screenshot={"file": png_name, "sha256": d["png_sha256"], "status": "ok"})
+        png, cut = crop_png(dev.screenshot(), dialog_box(dialog))
+        keep_screen(log, export, png, dialog, "*#06#",
+                    "the dialog *#06# opens; the picture is cut to the dialog, so the dialer behind it is not kept"
+                    if cut else "the dialog *#06# opens; the picture could not be cut, so it is the whole screen",
+                    png_cut_to_dialog=list(dialog_box(dialog)) if cut else None)
         ok = next((n for n in dialog.nodes() if (n.get("resource-id") or "").endswith("android:id/button1") and box_of(n)), None)
         if ok is not None:
             dev.tap(*center(ok))
@@ -1603,7 +1745,8 @@ def nearly_same(a, b):
     return diff.histogram()[255] < 0.01 * x.size[0] * x.size[1]
 
 
-def empty_export(dev, out, scenario, device_label, case=None):
+def empty_export(dev, out, scenario, device_label, case=None,
+                 stop_reason="no walk: the screen's view tree could not be read, so only screenshots were taken"):
     """An export with no walk in it yet: the folder, the log's first rows and a manifest, for steps that
     add their own rows (the About phone screenshots)."""
     stamp = dev.stamp()
@@ -1618,7 +1761,7 @@ def empty_export(dev, out, scenario, device_label, case=None):
     log.add("system_event", "device_state", dict(device_facts(dev.serial), when="before the run"))
     summary = {"item": None, "screens": 0, "scrolls": 0, "rewind_scrolls": 0, "rewind_end_confirmed": None,
                "end_confirmed": None, "gaps": 0, "gaps_retried": 0, "unsettled": 0, "blank": 0, "pauses": 0,
-               "stop_reason": "no walk: the screen's view tree could not be read, so only screenshots were taken"}
+               "stop_reason": stop_reason}
     write_export(log, dev, "com.android.settings", dev.app_version("com.android.settings"), summary,
                  {"mode": "phone identity", "serial": dev.serial})
     return export
@@ -1629,8 +1772,13 @@ def screenshots_without_tree(export, dev, most=8, why=None, what="About phone", 
     screen (a ticking clock aside): for a screen whose view tree cannot be read. Returns a note saying so."""
     # Settings can reopen the page where it was left: go to the top first, until a scroll changes nothing.
     top = dev.screenshot()
+    refused = None
     for _ in range(10 if go_to_top else 0):
-        dev.swipe(540, 900, 540, 1700, 400)
+        try:
+            dev.swipe(540, 900, 540, 1700, 400)
+        except InputRefused as e:
+            refused = str(e)
+            break
         time.sleep(0.8)
         now = dev.screenshot()
         if nearly_same(now, top):
@@ -1649,15 +1797,24 @@ def screenshots_without_tree(export, dev, most=8, why=None, what="About phone", 
         log.add("auto_event", "screenshot_without_tree", {"png_file": name, "png_sha256": sha256(png), "n": n, "screen": what,
                                                           "why": why or "the phone gave no view tree for this screen"})
         prev = png
-        dev.swipe(540, 1700, 540, 900, 600)
+        if refused:
+            break
+        try:
+            dev.swipe(540, 1700, 540, 900, 600)
+        except InputRefused as e:
+            refused = str(e)
+            break
         time.sleep(1.5)
     log.close()
     refresh_manifest(export, log.rows, dev)
+    # Without input nothing scrolls: only what the screen first showed is kept (abrignoni/appwalk#53).
+    unscrolled = " The phone refuses input events, so it was not scrolled: only its first screen is kept." if refused else ""
     if why:
         return (f"The walk of {what} took no screenshot ({why}), so nothing was read from it; {n} screenshot(s) "
-                "of it were then taken without its text and are kept and chained, for the values to be read from them.")
+                "of it were then taken without its text and are kept and chained, for the values to be read from them."
+                + unscrolled)
     return (f"The phone gave no view tree for {what}, so nothing could be read from it; {n} screenshot(s) "
-            "of it are kept and chained, for the values to be read from them.")
+            "of it are kept and chained, for the values to be read from them." + unscrolled)
 
 
 # ---- Files added to an export after the walk ----
