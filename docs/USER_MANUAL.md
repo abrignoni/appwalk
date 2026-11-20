@@ -664,7 +664,14 @@ On 11 to 13 November 2026.
   With the voice note's view (`audio_seekbar`) in the profile and centred bubbles placed by the edge
   they line up with, every one came out right on both phones: 16 texts, 5 voice notes, the photo and
   the two deleted-message lines. The walks of the earlier dates above gave the same lines and
-  directions as before.
+  directions as before. Later walks of the same chat on the moto g47 (15 November) wrote one voice
+  note twice in 2 of 3 walks: the list's top edge cut it so its seekbar and its duration started at
+  the same height, which put them in the other order from the next screenshot, where the note was
+  whole. Two neighbouring lines that share a top and come in the other order on the next screenshot
+  now join as two shared lines, in the order of the screenshot where they do not share a top. This
+  was checked on made-up screens with the positions from those walks, not on the walks themselves.
+  The 154 AppWalk exports on this computer gave the same transcript as before; none of them has
+  such a pair.
 - Teaching Signal through the 0.1.0 dialog saved a photo's placeholder as the time and a picture as
   the author. The dialog of 0.1.1 takes only text for those and shows the words of each click.
 

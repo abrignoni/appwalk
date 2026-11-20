@@ -578,6 +578,29 @@ class TranscriptTests(unittest.TestCase):
         self.assertEqual(texts[i - 3:i], ["Motto, 10:17 AM", "Motto", "10:17 AM"])
         self.assertEqual(shared, 6)
 
+    def test_two_lines_swapped_by_a_shared_top_join_once(self):
+        # As in abrignoni/appwalk#39 (WhatsApp 2.26.44.90, moto g47): the list's top edge cut a voice note so its
+        # seekbar, duration and time all started at 257, and the duration (left 251) sorted before the seekbar
+        # (left 252). On the next screenshot up, the note was whole and the seekbar came first. The note is
+        # listed once, in the order of the screenshot that showed it whole.
+        import transcript
+        R = "com.whatsapp:id/"
+        L = lambda t, rid, b: {"text": t, "rid": R + rid, "desc": "", "bounds": b, "side": "left"}
+        held = [L("0:07", "description", (251, 257, 586, 288)), L("", "audio_seekbar", (252, 257, 721, 268)),
+                L("03:28", "date", (593, 257, 721, 281)), L("m5", "message_text", (100, 300, 700, 350)),
+                L("m6", "message_text", (100, 360, 700, 410))]
+        new = [L("m4", "message_text", (100, 150, 700, 200)), L("", "audio_seekbar", (252, 700, 721, 760)),
+               L("0:07", "description", (251, 710, 586, 780)), L("03:28", "date", (593, 750, 721, 780)),
+               L("m5", "message_text", (100, 800, 700, 850)), L("m6", "message_text", (100, 860, 700, 910))]
+        merged, shared = transcript.join(list(held), new, "above")
+        self.assertEqual([transcript.short_id(x["rid"]) for x in merged],
+                         ["message_text", "audio_seekbar", "description", "date", "message_text", "message_text"])
+        self.assertEqual(shared, 5)
+        # Two neighbours in a different order with no shared top on either screenshot are not taken as a swap.
+        held[1]["bounds"] = (252, 262, 721, 268)
+        _, shared = transcript.join(list(held), new, "above")
+        self.assertLess(shared, 5)
+
     def test_author_words_give_each_message_its_direction(self):
         # As in Snapchat 14.32 (Galaxy A16 5G, 15 November 2026): "ME" heads this phone's messages and the
         # conversation's title in capitals heads the other side's; none of them has a view id.

@@ -382,9 +382,19 @@ def join(merged, frame, reveal, ticking=(), shown=False):
     # place: 2 of 50 messages were dropped and 3 repeated, among lines that repeat every message (author,
     # time). A line only the frame has is put back where it sat, if a shared line follows it in the frame;
     # one at the frame's far edge (cut off) is not.
+    # Two lines that share a top are ordered by their left (frame_lines), so a list edge that cuts one of them
+    # to the other's top can swap them: two neighbours in one order on one screenshot and in the other order on
+    # the next. Such a pair scores two. Scored as a gap, the swapped line was put back as a second line
+    # (WhatsApp 2.26.44.90, moto g47, abrignoni/appwalk#39: a voice note's seekbar and duration, both at the top
+    # edge's 257 on one screenshot, gave the voice note twice in 2 of 3 walks). The pair keeps the order of the
+    # screenshot where the two do not share a top, since the tie came from the cut; an author line or a time
+    # carries to the lines after it, so the order matters.
     a, b = [key(x) for x in merged], [key(x) for x in frame]
     n, m = len(b), min(len(a), 2 * len(b) + 10)
-    MATCH, TICK, CHANGED, HELD_ONLY, FRAME_ONLY = range(5)
+    MATCH, TICK, CHANGED, HELD_ONLY, FRAME_ONLY, SWAP = range(6)
+
+    def tied(lines, k):
+        return lines[k]["bounds"][1] == lines[k + 1]["bounds"][1]
     f = [[0] * (m + 1) for _ in range(n + 1)]
     move = [[None] * (m + 1) for _ in range(n + 1)]
     for i in range(n - 1, -1, -1):
@@ -399,6 +409,9 @@ def join(merged, frame, reveal, ticking=(), shown=False):
                 opts = [(f[i + 1][j + 1] - 1, CHANGED)]
             else:
                 opts = []
+            if (i + 1 < n and j + 1 < m and b[i] == a[j + 1] and b[i + 1] == a[j] and b[i] != b[i + 1]
+                    and (tied(frame, i) or tied(merged, j))):
+                opts.append((2 + f[i + 2][j + 2], SWAP))
             opts += [(f[i][j + 1] - 1, HELD_ONLY), (f[i + 1][j] - 1, FRAME_ONLY)]
             f[i][j], move[i][j] = max(opts, key=lambda o: (o[0], -o[1]))
     # shown: the two screenshots are already shown to overlap (lines moved together, or the pictures line up), so
@@ -406,16 +419,20 @@ def join(merged, frame, reveal, ticking=(), shown=False):
     # (15 November 2026): a picture cut by the list's edge on both screenshots shared only itself and its row,
     # while the author and time above it showed on one screenshot only; the score was 0 and the picture was
     # listed twice.
-    best, best_score, best_shared, best_inserts = None, (float("-inf") if shown else 0), 0, None
+    best, best_score, best_shared, best_inserts, best_flips = None, (float("-inf") if shown else 0), 0, None, None
     for d in range(n):
-        i, j, shared, inserts, pending = d, 0, 0, [], []
+        i, j, shared, inserts, pending, flips = d, 0, 0, [], [], set()
         while i < n:
             mv = move[i][j]
-            if mv == MATCH:
-                shared += 1
+            if mv in (MATCH, SWAP):
+                shared += 1 if mv == MATCH else 2
                 inserts += pending
                 pending = []
-            if mv in (MATCH, TICK, CHANGED):
+            if mv == SWAP:
+                if tied(merged, j) and not tied(frame, i):
+                    flips.add(j)
+                i, j = i + 2, j + 2
+            elif mv in (MATCH, TICK, CHANGED):
                 i, j = i + 1, j + 1
             elif mv == HELD_ONLY:
                 j += 1
@@ -423,14 +440,17 @@ def join(merged, frame, reveal, ticking=(), shown=False):
                 pending.append((j, frame[i]))
                 i += 1
         if shared and f[d][0] > best_score:
-            best, best_score, best_shared, best_inserts = d, f[d][0], shared, inserts
+            best, best_score, best_shared, best_inserts, best_flips = d, f[d][0], shared, inserts, flips
     if best is None:
         return frame + merged, 0
     out = list(frame[:best])
     by_place = {}
     for j, x in best_inserts:
         by_place.setdefault(j, []).append(x)
-    for j, x in enumerate(merged):
+    held = list(merged)
+    for j in best_flips:
+        held[j], held[j + 1] = held[j + 1], held[j]
+    for j, x in enumerate(held):
         out += by_place.get(j, [])
         out.append(x)
     return out, best_shared
