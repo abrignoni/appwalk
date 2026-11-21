@@ -291,8 +291,9 @@ def build(export, out_name="report.pdf"):
               "Each screenshot is printed beside the lines first seen on it, and each line's tag, such as S12, names that "
               "screenshot. A screenshot the same as the one before it is printed once, with both numbers.",
               "This report is made from the export's files and is not in its hash chain. Its own SHA-256 is in "
-              "report.pdf.sha256 beside it. The export's latest row hash, on every page, covers every row and every file "
-              "of the export."):
+              "report.pdf.sha256 beside it. The export's latest row hash, on every page, covers every row of the log and, "
+              "through the hashes in those rows, every screenshot, view tree and added file. It does not cover this "
+              "report, the transcript files, actions.csv, text_index.csv or manifest.json."):
         story.append(Paragraph(esc(x), st["p"]))
         story.append(Spacer(1, 4))
 
