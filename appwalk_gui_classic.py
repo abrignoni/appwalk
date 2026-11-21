@@ -291,7 +291,7 @@ class App:
         ttk.Button(c, text="Add a file to an earlier export", command=self.add_file_earlier).pack(side="left", padx=(8, 0))
         self.earlier_copy = ttk.Button(c, text="Copy hash", command=lambda: self.copy_text(self.earlier_hash), state="disabled")
         self.earlier_copy.pack(side="left", padx=(8, 0))
-        self.earlier = tk.Label(c, text="Picks a folder AppWalk wrote and checks its hash chain and every file.", font=self.f_small, bg=CARD, fg=MUTED,
+        self.earlier = tk.Label(c, text="Picks a folder AppWalk wrote and checks its hash chain, screenshots, view trees and added files.", font=self.f_small, bg=CARD, fg=MUTED,
                                 anchor="w", justify="left", wraplength=560)
         self.earlier.pack(side="left", padx=12)
         return page

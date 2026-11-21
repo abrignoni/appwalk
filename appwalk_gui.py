@@ -277,7 +277,7 @@ if ctk is not None:
             self.earlier_copy = self.ghost(row, "Copy hash", lambda: self.copy_text(self.earlier_hash))
             self.earlier_copy.configure(state="disabled")
             self.earlier_copy.pack(side="left", padx=(8, 0))
-            self.earlier = Label(row, text="Picks a folder AppWalk wrote and checks its hash chain and every file.", font=self.f_small,
+            self.earlier = Label(row, text="Picks a folder AppWalk wrote and checks its hash chain, screenshots, view trees and added files.", font=self.f_small,
                                  text_color=MUTED, anchor="w", justify="left", wraplength=540)
             self.earlier.pack(side="left", padx=12)
             return page
